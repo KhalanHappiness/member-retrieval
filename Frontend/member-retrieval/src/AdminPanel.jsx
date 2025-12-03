@@ -22,25 +22,36 @@ export default function AdminPanel() {
   }, []);
 
   const fetchMembers = async () => {
-    try {
-      const response = await fetch(`${API_URL}/admin/members`);
+  try {
+    const response = await fetch(`${API_URL}/admin/members`, {
+      credentials: 'include', // <-- Important
+    });
+    if (response.ok) {
       const data = await response.json();
       setMembers(data);
-    } catch (err) {
-      setError('Failed to fetch members');
+    } else {
+      setError('Unauthorized. Please login again.');
     }
-  };
+  } catch (err) {
+    setError('Failed to fetch members');
+  }
+};
 
   const fetchStats = async () => {
-    try {
-      const response = await fetch(`${API_URL}/admin/stats`);
+  try {
+    const response = await fetch(`${API_URL}/admin/stats`, {
+      credentials: 'include', // <-- Important
+    });
+    if (response.ok) {
       const data = await response.json();
       setStats(data);
-    } catch (err) {
-      console.error('Failed to fetch stats');
+    } else {
+      console.error('Unauthorized. Please login again.');
     }
-  };
-
+  } catch (err) {
+    console.error('Failed to fetch stats');
+  }
+};
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -50,9 +61,10 @@ export default function AdminPanel() {
       const response = await fetch(`${API_URL}/admin/members`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData),
+         credentials: 'include',
       });
 
       if (response.ok) {
@@ -84,6 +96,7 @@ export default function AdminPanel() {
       const response = await fetch(`${API_URL}/admin/members/bulk-upload`, {
         method: 'POST',
         body: formData,
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -118,6 +131,7 @@ export default function AdminPanel() {
     try {
       await fetch(`${API_URL}/admin/members/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
       fetchMembers();
       fetchStats();

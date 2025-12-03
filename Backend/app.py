@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app, origins="http://localhost:5173", supports_credentials=True)
 app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'  # Change this!
 
 # Configuration
@@ -26,19 +26,108 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+    
+    # Create default admin user if none exists
+    if User.query.count() == 0:
+        default_admin = User(
+            username='admin',
+            email='admin@sacco.com',
+            role='admin'
+        )
+        default_admin.set_password('admin123')  # Change this!
+        db.session.add(default_admin)
+        db.session.commit()
+        print("Default admin user created: username='admin', password='admin123'")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============= AUTHENTICATION ROUTES =============
+
+@app.route('/auth/login', methods=['POST'])
+def login():
+    """Login endpoint"""
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    
+    user = User.query.filter_by(username=username).first()
+    
+    if user and user.check_password(password) and user.is_active:
+        session['user_id'] = user.id
+        session['username'] = user.username
+        session['role'] = user.role
+        
+        # Update last login
+        user.last_login = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': user.to_dict()
+        })
+    
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/auth/logout', methods=['POST'])
+def logout():
+    """Logout endpoint"""
+    session.clear()
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/auth/me', methods=['GET'])
+@login_required
+def get_current_user():
+    """Get current logged in user"""
+    user = User.query.get(session['user_id'])
+    return jsonify(user.to_dict())
+
+@app.route('/auth/change-password', methods=['POST'])
+@login_required
+def change_password():
+    """Change user password"""
+    data = request.json
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+    
+    if not current_password or not new_password:
+        return jsonify({'error': 'Current and new password required'}), 400
+    
+    user = db.session.get(User, session['user_id'])
+
+    
+    if not user.check_password(current_password):
+        return jsonify({'error': 'Current password is incorrect'}), 401
+    
+    user.set_password(new_password)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Password changed successfully'})
+
 # ============= ADMIN ROUTES =============
 
 @app.route('/admin/members', methods=['GET'])
+@login_required
 def get_all_members():
     """Get all members"""
     members = Member.query.all()
     return jsonify([member.to_dict() for member in members])
 
 @app.route('/admin/members', methods=['POST'])
+@login_required
 def add_member():
     """Add a single member"""
     data = request.json
@@ -70,6 +159,7 @@ def add_member():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/bulk-upload', methods=['POST'])
+@login_required
 def bulk_upload():
     """Upload members from Excel file"""
     if 'file' not in request.files:
@@ -149,6 +239,7 @@ def bulk_upload():
         return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
 
 @app.route('/admin/members/<int:member_id>', methods=['PUT'])
+@login_required
 def update_member(member_id):
     """Update a member"""
     member = Member.query.get_or_404(member_id)
@@ -167,6 +258,7 @@ def update_member(member_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/<int:member_id>', methods=['DELETE'])
+@login_required
 def delete_member(member_id):
     """Delete a member"""
     member = Member.query.get_or_404(member_id)
@@ -180,6 +272,7 @@ def delete_member(member_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/delete-all', methods=['DELETE'])
+@login_required
 def delete_all_members():
     """Delete all members (use with caution)"""
     try:
@@ -230,6 +323,7 @@ def health_check():
     return jsonify({'status': 'healthy', 'message': 'SACCO API is running'})
 
 @app.route('/admin/stats', methods=['GET'])
+@login_required
 def get_stats():
     """Get database statistics"""
     total_members = Member.query.count()
