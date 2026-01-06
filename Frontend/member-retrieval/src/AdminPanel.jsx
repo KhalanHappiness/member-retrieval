@@ -440,9 +440,9 @@ export default function AdminPanel() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="pending">Pending</option>
-                    <option value="suspended">Suspended</option>
+                    <option value="dormanr">Dormant</option>
+                    <option value="closed">Closed</option>
+                    <option value="deceased">Deceased</option>
                   </select>
                 </div>
 
