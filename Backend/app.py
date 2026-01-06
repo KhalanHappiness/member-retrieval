@@ -18,8 +18,8 @@ app.config['SECRET_KEY'] = os.environ.get(
     'dev-only-secret-key-change-me'
 )
 app.config['SESSION_COOKIE_SAMESITE'] = None  # Remove SameSite entirely for local development
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = False  # Disable for debugging
+app.config['SESSION_COOKIE_SECURE'] = True  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Disable for debugging
 app.config['SESSION_COOKIE_NAME'] = 'session'
 app.config['SESSION_COOKIE_DOMAIN'] = None  # Don't restrict domain
 app.config['SESSION_COOKIE_PATH'] = '/'
@@ -29,7 +29,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 CORS(app, 
      resources={
          r"/*": {
-             "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+             "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "https://member-retrieval-zgdp.vercel.app/"],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
              "expose_headers": ["Set-Cookie"],
