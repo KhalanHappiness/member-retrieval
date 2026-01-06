@@ -13,7 +13,7 @@ app = Flask(__name__)
 # ============= CONFIGURATION =============
 
 # Session Configuration - MUST be set BEFORE CORS
-app.config['SECRET_KEY'] = 'your-secret-key-change-this-in-production'  # Change this!
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 app.config['SESSION_COOKIE_SAMESITE'] = None  # Remove SameSite entirely for local development
 app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = False  # Disable for debugging
