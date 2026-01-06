@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = 'http://127.0.0.1:5000';
 
 export default function AdminPanel() {
   const [members, setMembers] = useState([]);
@@ -14,44 +14,91 @@ export default function AdminPanel() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState('add'); // 'add' or 'bulk'
+  const [activeTab, setActiveTab] = useState('add');
+  const [loading, setLoading] = useState(true);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [itemsPerPage] = useState(50); // Show 50 records per page
+  const [searchFilter, setSearchFilter] = useState('');
 
   useEffect(() => {
-    fetchMembers();
-    fetchStats();
+    const initializeData = async () => {
+      try {
+        const authCheck = await fetch(`${API_URL}/auth/me`, {
+          credentials: 'include',
+        });
+        
+        if (authCheck.ok) {
+          await Promise.all([fetchMembers(), fetchStats()]);
+        } else {
+          setError('Session expired. Please login again.');
+          setLoading(false);
+        }
+      } catch (err) {
+        setError('Authentication error. Please login again.');
+        setLoading(false);
+      }
+    };
+    
+    initializeData();
   }, []);
 
-  const fetchMembers = async () => {
-  try {
-    const response = await fetch(`${API_URL}/admin/members`, {
-      credentials: 'include', // <-- Important
-    });
-    if (response.ok) {
-      const data = await response.json();
-      setMembers(data);
-    } else {
-      setError('Unauthorized. Please login again.');
+  // Refetch when page or search changes
+  useEffect(() => {
+    if (!loading) {
+      fetchMembers();
     }
-  } catch (err) {
-    setError('Failed to fetch members');
-  }
-};
+  }, [currentPage, searchFilter]);
+
+  const fetchMembers = async () => {
+    try {
+      // Add pagination and search parameters to API call
+      const params = new URLSearchParams({
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchFilter
+      });
+      
+      const response = await fetch(`${API_URL}/admin/members?${params}`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setMembers(data.members || data); // Handle both paginated and non-paginated responses
+        if (data.total) {
+          setTotalPages(Math.ceil(data.total / itemsPerPage));
+        }
+        setLoading(false);
+      } else if (response.status === 401) {
+        setError('Session expired. Please login again.');
+        setLoading(false);
+      } else {
+        setError('Failed to fetch members');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError('Network error. Failed to fetch members');
+      setLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
-  try {
-    const response = await fetch(`${API_URL}/admin/stats`, {
-      credentials: 'include', // <-- Important
-    });
-    if (response.ok) {
-      const data = await response.json();
-      setStats(data);
-    } else {
-      console.error('Unauthorized. Please login again.');
+    try {
+      const response = await fetch(`${API_URL}/admin/stats`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stats');
     }
-  } catch (err) {
-    console.error('Failed to fetch stats');
-  }
-};
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -64,7 +111,7 @@ export default function AdminPanel() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData),
-         credentials: 'include',
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -129,13 +176,18 @@ export default function AdminPanel() {
     if (!window.confirm('Are you sure you want to delete this member?')) return;
 
     try {
-      await fetch(`${API_URL}/admin/members/${id}`, {
+      const response = await fetch(`${API_URL}/admin/members/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-      fetchMembers();
-      fetchStats();
-      setSuccess('Member deleted successfully!');
+      
+      if (response.ok) {
+        fetchMembers();
+        fetchStats();
+        setSuccess('Member deleted successfully!');
+      } else {
+        setError('Failed to delete member');
+      }
     } catch (err) {
       setError('Failed to delete member');
     }
@@ -148,6 +200,11 @@ export default function AdminPanel() {
     });
   };
 
+  const handleSearchChange = (e) => {
+    setSearchFilter(e.target.value);
+    setCurrentPage(1); // Reset to first page on new search
+  };
+
   const downloadTemplate = () => {
     const csvContent = "name,member_number,id_number,zone\nJohn Doe,M001,12345678,Zone A\nJane Smith,M002,87654321,Zone B";
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -157,6 +214,23 @@ export default function AdminPanel() {
     a.download = 'member_template.csv';
     a.click();
   };
+
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -181,7 +255,6 @@ export default function AdminPanel() {
 
         {/* Add Member Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          {/* Tabs */}
           <div className="flex border-b mb-6">
             <button
               onClick={() => setActiveTab('add')}
@@ -217,73 +290,77 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* Add Single Member Tab */}
           {activeTab === 'add' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Member Number
-                </label>
-                <input
-                  type="text"
-                  name="member_number"
-                  value={formData.member_number}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Member Number
+                  </label>
+                  <input
+                    type="text"
+                    name="member_number"
+                    value={formData.member_number}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  ID Number
-                </label>
-                <input
-                  type="text"
-                  name="id_number"
-                  value={formData.id_number}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    ID Number
+                  </label>
+                  <input
+                    type="text"
+                    name="id_number"
+                    value={formData.id_number}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Zone
-                </label>
-                <input
-                  type="text"
-                  name="zone"
-                  value={formData.zone}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Zone
+                  </label>
+                  <input
+                    type="text"
+                    name="zone"
+                    value={formData.zone}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
 
-              <div className="md:col-span-2">
-                <button
-                  onClick={handleSubmit}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200"
-                >
-                  Add Member
-                </button>
+                <div className="md:col-span-2">
+                  <button
+                    onClick={handleSubmit}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200"
+                  >
+                    Add Member
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Bulk Upload Tab */}
           {activeTab === 'bulk' && (
             <div>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
@@ -335,41 +412,97 @@ export default function AdminPanel() {
           )}
         </div>
 
-        {/* Members List */}
+        {/* Members List with Search and Pagination */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">All Members ({members.length})</h2>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Member #</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID Number</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Zone</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((member) => (
-                  <tr key={member.id} className="border-t border-gray-200 hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm">{member.name}</td>
-                    <td className="px-4 py-3 text-sm">{member.member_number}</td>
-                    <td className="px-4 py-3 text-sm">{member.id_number}</td>
-                    <td className="px-4 py-3 text-sm">{member.zone}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <button
-                        onClick={() => handleDelete(member.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">All Members ({stats.total_members})</h2>
+            
+            {/* Search Filter */}
+            <div className="w-64">
+              <input
+                type="text"
+                placeholder="Search by name or number..."
+                value={searchFilter}
+                onChange={handleSearchChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
+          
+          {members.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No members found.</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Member #</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID Number</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Zone</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((member) => (
+                      <tr key={member.id} className="border-t border-gray-200 hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm">{member.name}</td>
+                        <td className="px-4 py-3 text-sm">{member.member_number}</td>
+                        <td className="px-4 py-3 text-sm">{member.id_number}</td>
+                        <td className="px-4 py-3 text-sm">{member.zone}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <button
+                            onClick={() => handleDelete(member.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="mt-6 flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => goToPage(1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    First
+                  </button>
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
