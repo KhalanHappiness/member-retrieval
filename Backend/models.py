@@ -12,6 +12,7 @@ class Member(db.Model):
     member_number = db.Column(db.String(50), unique=True, nullable=False)
     id_number = db.Column(db.String(50), nullable=False)
     zone = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(20), default='active', nullable=False)  # NEW: active, inactive, pending, suspended
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -25,6 +26,7 @@ class Member(db.Model):
             'member_number': self.member_number,
             'id_number': self.id_number,
             'zone': self.zone,
+            'status': self.status,  # NEW
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
@@ -37,7 +39,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    role = db.Column(db.String(20), default='admin')  # admin, super_admin, etc.
+    role = db.Column(db.String(20), default='admin')
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
@@ -46,11 +48,9 @@ class User(db.Model):
         return f'<User {self.username}>'
 
     def set_password(self, password):
-        """Hash and set the password"""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        """Verify password against hash"""
         return check_password_hash(self.password_hash, password)
 
     def to_dict(self):
