@@ -417,6 +417,33 @@ def delete_all_members():
         print(f"❌ Error deleting all members: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+# Add this new route for BULK DELETE
+@app.route('/admin/members/bulk-delete', methods=['POST'])
+@login_required
+def bulk_delete_members():
+    """Delete multiple members at once"""
+    data = request.json
+    member_ids = data.get('ids', [])
+    
+    if not member_ids or not isinstance(member_ids, list):
+        return jsonify({'error': 'Please provide a list of member IDs'}), 400
+    
+    try:
+        # Delete all members with the given IDs
+        deleted_count = Member.query.filter(Member.id.in_(member_ids)).delete(synchronize_session=False)
+        db.session.commit()
+        
+        print(f"✅ Bulk delete: {deleted_count} members deleted")
+        return jsonify({
+            'success': True,
+            'deleted': deleted_count,
+            'message': f'Successfully deleted {deleted_count} members'
+        })
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Bulk delete error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 # ============= PUBLIC ROUTES (OPTIMIZED) =============
 
 @app.route('/search', methods=['POST'])
