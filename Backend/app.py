@@ -17,7 +17,7 @@ app.config['SECRET_KEY'] = os.environ.get(
     'SECRET_KEY',
     'dev-only-secret-key-change-me'
 )
-app.config['SESSION_COOKIE_SAMESITE'] = None  # Remove SameSite entirely for local development
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Remove SameSite entirely for local development
 app.config['SESSION_COOKIE_SECURE'] = True  # Set to True in production with HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Disable for debugging
 app.config['SESSION_COOKIE_NAME'] = 'session'
