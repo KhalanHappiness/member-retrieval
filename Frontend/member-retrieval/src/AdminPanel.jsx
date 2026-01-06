@@ -9,7 +9,8 @@ export default function AdminPanel() {
     name: '',
     member_number: '',
     id_number: '',
-    zone: ''
+    zone: '',
+    status: 'active'
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,8 +21,12 @@ export default function AdminPanel() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [itemsPerPage] = useState(50); // Show 50 records per page
+  const [itemsPerPage] = useState(50);
   const [searchFilter, setSearchFilter] = useState('');
+  
+  // Bulk delete state
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -45,16 +50,16 @@ export default function AdminPanel() {
     initializeData();
   }, []);
 
-  // Refetch when page or search changes
   useEffect(() => {
     if (!loading) {
       fetchMembers();
+      setSelectedMembers([]); // Clear selection when page changes
+      setSelectAll(false);
     }
   }, [currentPage, searchFilter]);
 
   const fetchMembers = async () => {
     try {
-      // Add pagination and search parameters to API call
       const params = new URLSearchParams({
         page: currentPage,
         per_page: itemsPerPage,
@@ -67,7 +72,7 @@ export default function AdminPanel() {
       
       if (response.ok) {
         const data = await response.json();
-        setMembers(data.members || data); // Handle both paginated and non-paginated responses
+        setMembers(data.members || data);
         if (data.total) {
           setTotalPages(Math.ceil(data.total / itemsPerPage));
         }
@@ -116,7 +121,7 @@ export default function AdminPanel() {
 
       if (response.ok) {
         setSuccess('Member added successfully!');
-        setFormData({ name: '', member_number: '', id_number: '', zone: '' });
+        setFormData({ name: '', member_number: '', id_number: '', zone: '', status: 'active' });
         fetchMembers();
         fetchStats();
       } else {
@@ -193,6 +198,64 @@ export default function AdminPanel() {
     }
   };
 
+  // NEW: Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedMembers.length === 0) {
+      setError('Please select members to delete');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete ${selectedMembers.length} member(s)?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/admin/members/bulk-delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids: selectedMembers }),
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSuccess(`Successfully deleted ${data.deleted} member(s)`);
+        setSelectedMembers([]);
+        setSelectAll(false);
+        fetchMembers();
+        fetchStats();
+      } else {
+        setError(data.error || 'Failed to delete members');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  // NEW: Toggle individual member selection
+  const toggleMemberSelection = (memberId) => {
+    setSelectedMembers(prev => {
+      if (prev.includes(memberId)) {
+        return prev.filter(id => id !== memberId);
+      } else {
+        return [...prev, memberId];
+      }
+    });
+  };
+
+  // NEW: Toggle select all members on current page
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedMembers([]);
+    } else {
+      setSelectedMembers(members.map(m => m.id));
+    }
+    setSelectAll(!selectAll);
+  };
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -202,11 +265,11 @@ export default function AdminPanel() {
 
   const handleSearchChange = (e) => {
     setSearchFilter(e.target.value);
-    setCurrentPage(1); // Reset to first page on new search
+    setCurrentPage(1);
   };
 
   const downloadTemplate = () => {
-    const csvContent = "name,member_number,id_number,zone\nJohn Doe,M001,12345678,Zone A\nJane Smith,M002,87654321,Zone B";
+    const csvContent = "name,member_number,id_number,zone,status\nJohn Doe,M001,12345678,Zone A,active\nJane Smith,M002,87654321,Zone B,active";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -219,6 +282,22 @@ export default function AdminPanel() {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
     }
+  };
+
+  // NEW: Status badge component
+  const StatusBadge = ({ status }) => {
+    const colors = {
+      active: 'bg-green-100 text-green-800',
+      inactive: 'bg-gray-100 text-gray-800',
+      pending: 'bg-yellow-100 text-yellow-800',
+      suspended: 'bg-red-100 text-red-800'
+    };
+    
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[status] || colors.active}`}>
+        {status}
+      </span>
+    );
   };
 
   if (loading) {
@@ -349,6 +428,24 @@ export default function AdminPanel() {
                   />
                 </div>
 
+                {/* NEW: Status dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+
                 <div className="md:col-span-2">
                   <button
                     onClick={handleSubmit}
@@ -399,7 +496,7 @@ export default function AdminPanel() {
               <div className="mt-6">
                 <h3 className="font-medium text-gray-700 mb-2">Excel File Format:</h3>
                 <p className="text-sm text-gray-600 mb-3">
-                  Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>zone</strong>
+                  Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>zone</strong>, <strong>status</strong> (optional, defaults to 'active')
                 </p>
                 <button
                   onClick={downloadTemplate}
@@ -412,7 +509,7 @@ export default function AdminPanel() {
           )}
         </div>
 
-        {/* Members List with Search and Pagination */}
+        {/* Members List with Search, Bulk Actions, and Pagination */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">All Members ({stats.total_members})</h2>
@@ -428,6 +525,21 @@ export default function AdminPanel() {
               />
             </div>
           </div>
+
+          {/* NEW: Bulk Actions Bar */}
+          {selectedMembers.length > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex justify-between items-center">
+              <span className="text-sm font-medium text-blue-800">
+                {selectedMembers.length} member(s) selected
+              </span>
+              <button
+                onClick={handleBulkDelete}
+                className="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 transition"
+              >
+                Delete Selected
+              </button>
+            </div>
+          )}
           
           {members.length === 0 ? (
             <p className="text-gray-500 text-center py-8">No members found.</p>
@@ -437,20 +549,42 @@ export default function AdminPanel() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-50">
+                      {/* NEW: Select All checkbox */}
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={selectAll}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                      </th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Member #</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID Number</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Zone</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {members.map((member) => (
                       <tr key={member.id} className="border-t border-gray-200 hover:bg-gray-50">
+                        {/* NEW: Individual checkbox */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedMembers.includes(member.id)}
+                            onChange={() => toggleMemberSelection(member.id)}
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-4 py-3 text-sm">{member.name}</td>
                         <td className="px-4 py-3 text-sm">{member.member_number}</td>
                         <td className="px-4 py-3 text-sm">{member.id_number}</td>
                         <td className="px-4 py-3 text-sm">{member.zone}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <StatusBadge status={member.status} />
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           <button
                             onClick={() => handleDelete(member.id)}
@@ -501,10 +635,11 @@ export default function AdminPanel() {
                   </button>
                 </div>
               </div>
-            </>
-          )}
-        </div>
-      </div>
+
+               </>
+      )}
     </div>
-  );
+  </div>
+</div>
+);
 }

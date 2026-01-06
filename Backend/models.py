@@ -12,7 +12,7 @@ class Member(db.Model):
     member_number = db.Column(db.String(50), unique=True, nullable=False)
     id_number = db.Column(db.String(50), nullable=False)
     zone = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(20), default='active', nullable=False)  # NEW: active, inactive, pending, suspended
+    status = db.Column(db.String(20), nullable=False)  
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

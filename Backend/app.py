@@ -7,6 +7,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import or_, Index
+from flask_migrate import Migrate
+
 
 app = Flask(__name__)
 
@@ -53,6 +55,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize database
 db.init_app(app)
+migrate = Migrate(app, db)
 
 def create_indexes():
     """Create database indexes for fast searches"""
@@ -260,7 +263,8 @@ def add_member():
         name=data['name'].strip(),
         member_number=data['member_number'].strip(),
         id_number=data['id_number'].strip(),
-        zone=data['zone'].strip()
+        zone=data['zone'].strip(),
+        status=data.get('status', 'active').strip()
     )
     
     try:
@@ -293,7 +297,7 @@ def bulk_upload():
         df = pd.read_excel(file)
         
         # Validate required columns
-        required_columns = ['name', 'member_number', 'id_number', 'zone']
+        required_columns = ['name', 'member_number', 'id_number', 'zone', 'status']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
@@ -333,7 +337,8 @@ def bulk_upload():
                     name=str(row['name']).strip(),
                     member_number=member_num,
                     id_number=str(row['id_number']).strip(),
-                    zone=str(row['zone']).strip()
+                    zone=str(row['zone']).strip(),
+                    status=str(row['status']).strip()
                 )
                 
                 new_members.append(new_member)

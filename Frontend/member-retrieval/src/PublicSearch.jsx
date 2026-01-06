@@ -142,7 +142,7 @@ export default function PublicSearch() {
                 </div>
                 <div className="flex justify-between py-2 border-b border-green-200">
                   <span className="font-medium text-gray-700">Status:</span>
-                  <span className="text-gray-900">{result.id_number}</span>
+                  <span className="text-gray-900">{result.status}</span>
                 </div>
                 <div className="flex justify-between py-2">
                   <span className="font-medium text-gray-700">Zone:</span>
