@@ -11,7 +11,7 @@ const Navbar = ({ currentView, setCurrentView, isAuthenticated, currentUser, han
     <div className="max-w-7xl mx-auto px-4">
       <div className="flex justify-between items-center h-16">
         <div className="flex items-center">
-          <h1 className="text-xl font-bold">SACCO Management System</h1>
+          <h1 className="text-xl font-bold"> Chuna Sacco</h1>
         </div>
         <div className="flex items-center space-x-4">
           <button
@@ -119,13 +119,7 @@ const AdminLogin = ({ loginData, loginError, loading, handleLoginChange, handleK
           {loading ? 'Logging in...' : 'Login'}
         </button>
 
-        <div className="mt-4 p-3 bg-blue-50 rounded-md">
-          <p className="text-xs text-gray-600 text-center">
-            <strong>Default credentials:</strong><br />
-            Username: admin<br />
-            Password: admin123
-          </p>
-        </div>
+        
       </div>
     </div>
   </div>

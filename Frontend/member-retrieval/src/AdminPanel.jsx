@@ -314,7 +314,7 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8">SACCO Admin Panel</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-8">Admin Panel</h1>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
