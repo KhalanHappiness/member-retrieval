@@ -92,7 +92,7 @@ export default function PublicSearch() {
   const handleOpenCorrectionModal = () => {
     setCorrectionData({
       correct_name: result.name,
-      correct_zone: result.zone,
+      correct_zone: '',
       email: '',
       phone: '',
       additional_notes: ''
@@ -263,7 +263,7 @@ export default function PublicSearch() {
                   <span className="text-gray-900 capitalize">{result.status}</span>
                 </div>
                 <div className="flex justify-between py-2">
-                  <span className="font-medium text-gray-700">Zone:</span>
+                  <span className="font-medium text-gray-700">Working Station:</span>
                   <span className="text-gray-900">{result.zone}</span>
                 </div>
               </div>
@@ -328,14 +328,14 @@ export default function PublicSearch() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Correct Zone
+                    Correct Working Station
                   </label>
                   <input
                     type="text"
                     name="correct_zone"
-                    // value={correctionData.correct_zone}
+                    value={correctionData.correct_zone}
                     onChange={handleCorrectionChange}
-                    placeholder="Enter correct zone"
+                    placeholder="Enter correct Working Station"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>

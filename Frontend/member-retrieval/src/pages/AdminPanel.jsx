@@ -311,7 +311,7 @@ export default function AdminPanel() {
             <p className="text-2xl md:text-3xl font-bold text-green-600">{stats.total_members}</p>
           </div>
           <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Zones</h3>
+            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Working Stations</h3>
             <p className="text-2xl md:text-3xl font-bold text-green-600">{stats.total_zones}</p>
           </div>
           <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('verifications')}>
@@ -368,7 +368,7 @@ export default function AdminPanel() {
                     <input type="text" name="id_number" value={formData.id_number} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Zone</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Working Station</label>
                     <input type="text" name="zone" value={formData.zone} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500" />
                   </div>
                   <div>
@@ -402,7 +402,7 @@ export default function AdminPanel() {
                   </div>
                   <div className="mt-6">
                     <h3 className="font-medium text-gray-700 mb-2">Excel File Format:</h3>
-                    <p className="text-sm text-gray-600 mb-3">Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>zone</strong>, <strong>status</strong></p>
+                    <p className="text-sm text-gray-600 mb-3">Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>Working Station</strong>, <strong>status</strong></p>
                     <button onClick={downloadTemplate} className="text-green-600 hover:text-green-800 text-sm font-medium">Download Template (CSV)</button>
                   </div>
                 </div>
@@ -436,7 +436,7 @@ export default function AdminPanel() {
                           <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Name</th>
                           <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Member #</th>
                           <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">ID Number</th>
-                          <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Zone</th>
+                          <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Working Station</th>
                           <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Status</th>
                           <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Actions</th>
                         </tr>
@@ -486,7 +486,7 @@ export default function AdminPanel() {
                         <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Member Name</th>
                         <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Member #</th>
                         <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">ID Number</th>
-                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Zone</th>
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Working Station</th>
                         <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Verified At</th>
                       </tr>
                     </thead>
@@ -552,14 +552,14 @@ export default function AdminPanel() {
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                           <h4 className="font-semibold text-sm text-red-800 mb-2">Current Details</h4>
                           <p className="text-sm"><span className="font-medium">Name:</span> {c.current_name}</p>
-                          <p className="text-sm"><span className="font-medium">Zone:</span> {c.current_zone}</p>
+                          <p className="text-sm"><span className="font-medium">Working Station:</span> {c.current_zone}</p>
                           <p className="text-sm"><span className="font-medium">Status:</span> {c.current_status}</p>
                         </div>
 
                         <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                           <h4 className="font-semibold text-sm text-green-800 mb-2">Requested Corrections</h4>
                           <p className="text-sm"><span className="font-medium">Name:</span> {c.correct_name}</p>
-                          <p className="text-sm"><span className="font-medium">Zone:</span> {c.correct_zone}</p>
+                          <p className="text-sm"><span className="font-medium">Working Station:</span> {c.correct_zone}</p>
                         </div>
                       </div>
 
