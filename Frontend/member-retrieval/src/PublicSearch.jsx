@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import chunaLogo from './assets/chuna.png'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
 
@@ -59,13 +60,20 @@ export default function PublicSearch() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">SACCO Member Lookup</h1>
-          <p className="text-gray-600">Search for member information</p>
+        <div className="flex items-center justify-center mb-4">
+          <img 
+            src={chunaLogo} 
+            alt="Chuna DT Sacco Logo" 
+            className="h-10 sm:h-10 lg:h-14 w-auto hover:opacity-90 transition-opacity"
+          />
         </div>
+        <div className="text-center mb-8">
+          <p className="text-sm text-gray-600">Enter your credentials for verification</p>
+        </div>
+        
 
         {/* Search Card */}
         <div className="bg-white rounded-xl shadow-lg p-8">
@@ -82,7 +90,7 @@ export default function PublicSearch() {
                 onChange={handleChange}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter member number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
             </div>
 
@@ -98,7 +106,7 @@ export default function PublicSearch() {
                 onChange={handleChange}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter ID number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
             </div>
 
@@ -106,7 +114,7 @@ export default function PublicSearch() {
             <button
               onClick={handleSearch}
               disabled={searching}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition duration-200 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {searching ? 'Searching...' : 'Search'}
             </button>
@@ -153,10 +161,7 @@ export default function PublicSearch() {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="text-center mt-6">
-          <p className="text-sm text-gray-600">Enter your credentials to verify membership</p>
-        </div>
+      
       </div>
     </div>
   );

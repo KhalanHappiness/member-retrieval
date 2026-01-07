@@ -304,7 +304,7 @@ export default function AdminPanel() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -320,7 +320,7 @@ export default function AdminPanel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
             <h3 className="text-gray-500 text-sm font-medium">Total Members</h3>
-            <p className="text-3xl font-bold text-blue-600">{stats.total_members}</p>
+            <p className="text-3xl font-bold text-green-600">{stats.total_members}</p>
           </div>
           <div className="bg-white rounded-lg shadow-md p-6">
             <h3 className="text-gray-500 text-sm font-medium">Total Zones</h3>
@@ -339,7 +339,7 @@ export default function AdminPanel() {
               onClick={() => setActiveTab('add')}
               className={`px-6 py-3 font-medium ${
                 activeTab === 'add'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  ? 'border-b-2 border-green-600 text-green-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -349,7 +349,7 @@ export default function AdminPanel() {
               onClick={() => setActiveTab('bulk')}
               className={`px-6 py-3 font-medium ${
                 activeTab === 'bulk'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  ? 'border-b-2 border-green-600 text-green-600'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -382,7 +382,7 @@ export default function AdminPanel() {
                     value={formData.name}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
 
@@ -396,7 +396,7 @@ export default function AdminPanel() {
                     value={formData.member_number}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
 
@@ -410,7 +410,7 @@ export default function AdminPanel() {
                     value={formData.id_number}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
 
@@ -424,7 +424,7 @@ export default function AdminPanel() {
                     value={formData.zone}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
 
@@ -437,7 +437,7 @@ export default function AdminPanel() {
                     name="status"
                     value={formData.status}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                   >
                     <option value="active">Active</option>
                     <option value="dormanr">Dormant</option>
@@ -449,7 +449,7 @@ export default function AdminPanel() {
                 <div className="md:col-span-2">
                   <button
                     onClick={handleSubmit}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200"
+                    className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition duration-200"
                   >
                     Add Member
                   </button>
@@ -500,7 +500,7 @@ export default function AdminPanel() {
                 </p>
                 <button
                   onClick={downloadTemplate}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  className="text-green-600 hover:text-green-800 text-sm font-medium"
                 >
                   Download Template (CSV)
                 </button>
@@ -521,15 +521,15 @@ export default function AdminPanel() {
                 placeholder="Search by name or number..."
                 value={searchFilter}
                 onChange={handleSearchChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
               />
             </div>
           </div>
 
           {/* NEW: Bulk Actions Bar */}
           {selectedMembers.length > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex justify-between items-center">
-              <span className="text-sm font-medium text-blue-800">
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex justify-between items-center">
+              <span className="text-sm font-medium text-green-800">
                 {selectedMembers.length} member(s) selected
               </span>
               <button
@@ -555,7 +555,7 @@ export default function AdminPanel() {
                           type="checkbox"
                           checked={selectAll}
                           onChange={toggleSelectAll}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
                         />
                       </th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
@@ -575,7 +575,7 @@ export default function AdminPanel() {
                             type="checkbox"
                             checked={selectedMembers.includes(member.id)}
                             onChange={() => toggleMemberSelection(member.id)}
-                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-4 h-4 text-green-600 rounded focus:ring-2 focus:ring-green-500"
                           />
                         </td>
                         <td className="px-4 py-3 text-sm">{member.name}</td>
