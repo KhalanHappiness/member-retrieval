@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import chunaLogo from './assets/chuna.png'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
 
@@ -173,9 +174,15 @@ export default function PublicSearch() {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Chuna DT Sacco</h1>
-          <p className="text-sm text-gray-600">Member Verification Portal</p>
+        <div className="flex items-center justify-center mb-8">
+           <img 
+              src={chunaLogo} 
+              alt="Chuna DT Sacco Logo" 
+              className="h-10 sm:h-10 lg:h-14 w-auto hover:opacity-90 transition-opacity"
+            />
+        </div>
+        <div className="text-center mb-4">
+          <p className="text-sm text-gray-600">Chuna Sacco Member details Verification Portal</p>
         </div>
 
         {/* Search Card */}
