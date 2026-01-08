@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import or_, Index
-from flask_migrate import Migrate
+from flask_migrate import Migrate, upgrade
 from flask_mail import Mail, Message
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -64,6 +64,25 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db.init_app(app)
 migrate = Migrate(app, db)
 
+import os
+from sqlalchemy.exc import OperationalError
+
+def run_migrations():
+    if os.getenv("RUN_MIGRATIONS", "true").lower() != "true":
+        return
+
+    with app.app_context():
+        try:
+            upgrade()
+            print("✅ Database migrations applied")
+        except OperationalError as e:
+            print("⚠️ Database not ready, skipping migrations:", e)
+        except Exception as e:
+            print("❌ Migration error:", e)
+
+run_migrations()
+
+
 def create_indexes():
     with app.app_context():
         try:
@@ -78,7 +97,7 @@ def create_indexes():
             print(f"⚠️ Index creation: {str(e)}")
 
 with app.app_context():
-    db.create_all()
+    # db.create_all()
     create_indexes()
     
     # Only create default user if tables exist and are properly structured
