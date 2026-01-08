@@ -19,6 +19,7 @@ class Member(db.Model):
     # Relationships
     verifications = db.relationship('Verification', backref='member', lazy=True, cascade='all, delete-orphan')
     corrections = db.relationship('CorrectionRequest', backref='member', lazy=True, cascade='all, delete-orphan')
+    search_logs = db.relationship('SearchLog', backref='member', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -43,16 +44,28 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='admin')
+    # Role options: 'super_admin', 'member_manager', 'verification_viewer', 'correction_viewer'
+    role = db.Column(db.String(30), default='member_manager')
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    def has_permission(self, permission):
+        """Check if user has specific permission"""
+        permissions = {
+            'super_admin': ['manage_users', 'manage_members', 'view_verifications', 'view_corrections', 'manage_corrections'],
+            'member_manager': ['manage_members', 'view_verifications', 'view_corrections'],
+            'verification_viewer': ['view_verifications'],
+            'correction_viewer': ['view_corrections', 'manage_corrections']
+        }
+        return permission in permissions.get(self.role, [])
     
     def to_dict(self):
         return {
@@ -69,7 +82,6 @@ class User(db.Model):
         return f'<User {self.username}>'
 
 
-# NEW: Verification model
 class Verification(db.Model):
     __tablename__ = 'verifications'
     
@@ -96,7 +108,6 @@ class Verification(db.Model):
         return f'<Verification {self.member_number} at {self.verified_at}>'
 
 
-# NEW: Correction Request model
 class CorrectionRequest(db.Model):
     __tablename__ = 'correction_requests'
     
@@ -120,9 +131,10 @@ class CorrectionRequest(db.Model):
     additional_notes = db.Column(db.Text)
     
     # Status tracking
-    status = db.Column(db.String(20), default='pending')  # pending, resolved
+    status = db.Column(db.String(20), default='pending')
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     resolved_at = db.Column(db.DateTime)
+    resolved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     def to_dict(self):
         return {
@@ -145,3 +157,31 @@ class CorrectionRequest(db.Model):
     
     def __repr__(self):
         return f'<CorrectionRequest {self.member_number} - {self.status}>'
+
+
+# NEW: Search Log model to track all searches
+class SearchLog(db.Model):
+    __tablename__ = 'search_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'), nullable=True)
+    member_number = db.Column(db.String(50), nullable=False, index=True)
+    id_number = db.Column(db.String(50), nullable=False)
+    search_successful = db.Column(db.Boolean, default=False)
+    ip_address = db.Column(db.String(45))  # IPv6 compatible
+    user_agent = db.Column(db.String(500))
+    searched_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'member_id': self.member_id,
+            'member_number': self.member_number,
+            'id_number': self.id_number,
+            'search_successful': self.search_successful,
+            'ip_address': self.ip_address,
+            'searched_at': self.searched_at.isoformat() if self.searched_at else None
+        }
+    
+    def __repr__(self):
+        return f'<SearchLog {self.member_number} - {"Success" if self.search_successful else "Failed"}>'

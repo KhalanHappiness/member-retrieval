@@ -3,11 +3,15 @@ import React, { useState, useEffect } from 'react';
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
 
 export default function AdminPanel() {
+  const [currentUser, setCurrentUser] = useState(null);
   const [members, setMembers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [verifications, setVerifications] = useState([]);
   const [corrections, setCorrections] = useState([]);
-  const [stats, setStats] = useState({ total_members: 0, total_zones: 0, total_verifications: 0, pending_corrections: 0 });
+  const [searchLogs, setSearchLogs] = useState([]);
+  const [stats, setStats] = useState({ total_members: 0, total_zones: 0, total_verifications: 0, pending_corrections: 0, total_searches: 0, successful_searches: 0 });
   const [formData, setFormData] = useState({ name: '', member_number: '', id_number: '', zone: '', status: 'active' });
+  const [userFormData, setUserFormData] = useState({ username: '', email: '', password: '', role: 'member_manager' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -23,38 +27,84 @@ export default function AdminPanel() {
   const [correctionPage, setCorrectionPage] = useState(1);
   const [correctionPages, setCorrectionPages] = useState(1);
   const [correctionFilter, setCorrectionFilter] = useState('all');
+  const [searchLogPage, setSearchLogPage] = useState(1);
+  const [searchLogPages, setSearchLogPages] = useState(1);
+  const [searchLogFilter, setSearchLogFilter] = useState('all');
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
 
-  useEffect(() => {
-    const initializeData = async () => {
-      try {
-        const authCheck = await fetch(`${API_URL}/auth/me`, { credentials: 'include' });
-        if (authCheck.ok) {
-          await Promise.all([fetchMembers(), fetchStats()]);
-        } else {
-          setError('Session expired. Please login again.');
-          setLoading(false);
-        }
-      } catch (err) {
-        setError('Authentication error. Please login again.');
+  const roles = [
+    { value: 'super_admin', label: 'Super Admin', description: 'Full access to all features' },
+    { value: 'member_manager', label: 'Member Manager', description: 'Manage members, view verifications and corrections' },
+    { value: 'verification_viewer', label: 'Verification Viewer', description: 'View verification records only' },
+    { value: 'correction_viewer', label: 'Correction Viewer', description: 'View and manage correction requests' }
+  ];
+
+useEffect(() => {
+  const initializeData = async () => {
+    try {
+      const authCheck = await fetch(`${API_URL}/auth/me`, { credentials: 'include' });
+      if (authCheck.ok) {
+        const userData = await authCheck.json();
+        setCurrentUser(userData);
+        
+        // Set the initial section based on user permissions
+        const permissions = {
+          'super_admin': 'members',
+          'member_manager': 'members',
+          'verification_viewer': 'verifications',
+          'correction_viewer': 'corrections'
+        };
+        setMainSection(permissions[userData.role] || 'search-logs');
+        
+        setLoading(false);
+      } else {
+        setError('Session expired. Please login again.');
         setLoading(false);
       }
-    };
-    initializeData();
-  }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      if (mainSection === 'members') fetchMembers();
-      else if (mainSection === 'verifications') fetchVerifications();
-      else if (mainSection === 'corrections') fetchCorrections();
-      setSelectedMembers([]);
-      setSelectAll(false);
+    } catch (err) {
+      setError('Authentication error. Please login again.');
+      setLoading(false);
     }
-  }, [currentPage, searchFilter, mainSection, verificationPage, correctionPage, correctionFilter]);
+  };
+  initializeData();
+}, []);
+
+useEffect(() => {
+  if (!currentUser || loading) return;
+  
+  // Fetch stats on initial load and when section changes
+  fetchStats();
+  
+  // Fetch data based on current section and permissions
+  if (mainSection === 'members' && hasPermission('manage_members')) {
+    fetchMembers();
+  } else if (mainSection === 'users' && hasPermission('manage_users')) {
+    fetchUsers();
+  } else if (mainSection === 'verifications' && hasPermission('view_verifications')) {
+    fetchVerifications();
+  } else if (mainSection === 'corrections' && hasPermission('view_corrections')) {
+    fetchCorrections();
+  } else if (mainSection === 'search-logs') {
+    fetchSearchLogs();
+  }
+  
+  setSelectedMembers([]);
+  setSelectAll(false);
+}, [currentUser, currentPage, searchFilter, mainSection, verificationPage, correctionPage, correctionFilter, searchLogPage, searchLogFilter]);  const hasPermission = (permission) => {
+    if (!currentUser) return false;
+    const permissions = {
+      'super_admin': ['manage_users', 'manage_members', 'view_verifications', 'view_corrections', 'manage_corrections'],
+      'member_manager': ['manage_members', 'view_verifications', 'view_corrections'],
+      'verification_viewer': ['view_verifications'],
+      'correction_viewer': ['view_corrections', 'manage_corrections']
+    };
+    return permissions[currentUser.role]?.includes(permission) || false;
+  };
 
   const fetchMembers = async () => {
+    if (!hasPermission('manage_members')) return;
     try {
       const params = new URLSearchParams({ page: currentPage, per_page: itemsPerPage, search: searchFilter });
       const response = await fetch(`${API_URL}/admin/members?${params}`, { credentials: 'include' });
@@ -62,13 +112,12 @@ export default function AdminPanel() {
         const data = await response.json();
         setMembers(data.members || data);
         if (data.total) setTotalPages(Math.ceil(data.total / itemsPerPage));
-        setLoading(false);
       } else if (response.status === 401) {
         setError('Session expired. Please login again.');
-        setLoading(false);
+      } else if (response.status === 403) {
+        setError('You do not have permission to view members');
       } else {
         setError('Failed to fetch members');
-        setLoading(false);
       }
     } catch (err) {
       setError('Network error. Failed to fetch members');
@@ -76,7 +125,21 @@ export default function AdminPanel() {
     }
   };
 
+  const fetchUsers = async () => {
+    if (!hasPermission('manage_users')) return;
+    try {
+      const response = await fetch(`${API_URL}/admin/users`, { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users');
+    }
+  };
+
   const fetchVerifications = async () => {
+    if (!hasPermission('view_verifications')) return;
     try {
       const params = new URLSearchParams({ page: verificationPage, per_page: 20 });
       const response = await fetch(`${API_URL}/admin/verifications?${params}`, { credentials: 'include' });
@@ -91,6 +154,7 @@ export default function AdminPanel() {
   };
 
   const fetchCorrections = async () => {
+    if (!hasPermission('view_corrections')) return;
     try {
       const params = new URLSearchParams({ page: correctionPage, per_page: 20, status: correctionFilter });
       const response = await fetch(`${API_URL}/admin/corrections?${params}`, { credentials: 'include' });
@@ -104,6 +168,20 @@ export default function AdminPanel() {
     }
   };
 
+  const fetchSearchLogs = async () => {
+    try {
+      const params = new URLSearchParams({ page: searchLogPage, per_page: 50, success: searchLogFilter });
+      const response = await fetch(`${API_URL}/admin/search-logs?${params}`, { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setSearchLogs(data.logs || []);
+        setSearchLogPages(data.pages || 1);
+      }
+    } catch (err) {
+      console.error('Failed to fetch search logs');
+    }
+  };
+
   const fetchStats = async () => {
     try {
       const response = await fetch(`${API_URL}/admin/stats`, { credentials: 'include' });
@@ -113,6 +191,49 @@ export default function AdminPanel() {
       }
     } catch (err) {
       console.error('Failed to fetch stats');
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    try {
+      const response = await fetch(`${API_URL}/admin/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userFormData),
+        credentials: 'include',
+      });
+      if (response.ok) {
+        setSuccess('User created successfully!');
+        setUserFormData({ username: '', email: '', password: '', role: 'member_manager' });
+        setShowUserModal(false);
+        fetchUsers();
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to create user');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) return;
+    try {
+      const response = await fetch(`${API_URL}/admin/users/${userId}`, { method: 'DELETE', credentials: 'include' });
+      if (response.ok) {
+        setSuccess('User deleted successfully!');
+        fetchUsers();
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to delete user');
+      }
+    } catch (err) {
+      setError('Failed to delete user');
     }
   };
 
@@ -231,6 +352,55 @@ export default function AdminPanel() {
     }
   };
 
+  const handleDownloadCorrectionPDF = async (correctionId) => {
+  try {
+    const response = await fetch(`${API_URL}/admin/corrections/${correctionId}/download-pdf`, {
+      credentials: 'include',
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `correction_${correctionId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } else {
+      setError('Failed to download PDF');
+    }
+  } catch (err) {
+    setError('Error downloading PDF');
+  }
+  };
+
+  const handleDownloadAllCorrectionsPDF = async () => {
+  try {
+    const params = new URLSearchParams({ status: correctionFilter });
+    const response = await fetch(`${API_URL}/admin/corrections/download-all-pdf?${params}`, {
+      credentials: 'include',
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `all_corrections_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } else {
+      setError('Failed to download PDF');
+    }
+  } catch (err) {
+    setError('Error downloading PDF');
+  }
+  };
+
   const toggleMemberSelection = (memberId) => {
     setSelectedMembers(prev => prev.includes(memberId) ? prev.filter(id => id !== memberId) : [...prev, memberId]);
   };
@@ -246,6 +416,10 @@ export default function AdminPanel() {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleUserFormChange = (e) => {
+    setUserFormData({ ...userFormData, [e.target.name]: e.target.value });
   };
 
   const handleSearchChange = (e) => {
@@ -274,7 +448,8 @@ export default function AdminPanel() {
       closed: 'bg-yellow-100 text-yellow-800',
       deceased: 'bg-red-100 text-red-800',
       pending: 'bg-yellow-100 text-yellow-800',
-      resolved: 'bg-green-100 text-green-800'
+      resolved: 'bg-green-100 text-green-800',
+      inactive: 'bg-red-100 text-red-800'
     };
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[status] || colors.active}`}>
@@ -303,49 +478,226 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6 md:mb-8">Admin Panel</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Admin Panel</h1>
+          {currentUser && (
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">{currentUser.username}</span>
+              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">{currentUser.role.replace(/_/g, ' ')}</span>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-          <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Members</h3>
-            <p className="text-2xl md:text-3xl font-bold text-green-600">{stats.total_members}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Working Stations</h3>
-            <p className="text-2xl md:text-3xl font-bold text-green-600">{stats.total_zones}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('verifications')}>
-            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Verifications</h3>
-            <p className="text-2xl md:text-3xl font-bold text-blue-600">{stats.total_verifications}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('corrections')}>
-            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Pending Corrections</h3>
-            <p className="text-2xl md:text-3xl font-bold text-orange-600">{stats.pending_corrections}</p>
+          {hasPermission('manage_members') && (
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
+              <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Members</h3>
+              <p className="text-2xl md:text-3xl font-bold text-green-600">{stats.total_members}</p>
+            </div>
+          )}
+          {hasPermission('view_verifications') && (
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('verifications')}>
+              <h3 className="text-gray-500 text-xs md:text-sm font-medium">Verifications</h3>
+              <p className="text-2xl md:text-3xl font-bold text-blue-600">{stats.total_verifications}</p>
+            </div>
+          )}
+          {hasPermission('view_corrections') && (
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('corrections')}>
+              <h3 className="text-gray-500 text-xs md:text-sm font-medium">Pending Corrections</h3>
+              <p className="text-2xl md:text-3xl font-bold text-orange-600">{stats.pending_corrections}</p>
+            </div>
+          )}
+          <div className="bg-white rounded-lg shadow-md p-4 md:p-6 cursor-pointer hover:bg-gray-50" onClick={() => setMainSection('search-logs')}>
+            <h3 className="text-gray-500 text-xs md:text-sm font-medium">Total Searches</h3>
+            <p className="text-2xl md:text-3xl font-bold text-purple-600">{stats.total_searches}</p>
           </div>
         </div>
 
         <div className="flex flex-wrap border-b mb-6 bg-white rounded-t-lg overflow-x-auto">
-          <button onClick={() => setMainSection('members')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'members' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
-            Members
-          </button>
-          <button onClick={() => setMainSection('verifications')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'verifications' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
-            Verifications
-            {stats.total_verifications > 0 && (
-              <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">{stats.total_verifications}</span>
-            )}
-          </button>
-          <button onClick={() => setMainSection('corrections')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'corrections' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
-            Corrections
-            {stats.pending_corrections > 0 && (
-              <span className="ml-2 px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full">{stats.pending_corrections}</span>
-            )}
+          {hasPermission('manage_members') && (
+            <button onClick={() => setMainSection('members')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'members' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              Members
+            </button>
+          )}
+          {hasPermission('manage_users') && (
+            <button onClick={() => setMainSection('users')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'users' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              Users
+            </button>
+          )}
+          {hasPermission('view_verifications') && (
+            <button onClick={() => setMainSection('verifications')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'verifications' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              Verifications
+              {stats.total_verifications > 0 && (
+                <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">{stats.total_verifications}</span>
+              )}
+            </button>
+          )}
+          {hasPermission('view_corrections') && (
+            <button onClick={() => setMainSection('corrections')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'corrections' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+              Corrections
+              {stats.pending_corrections > 0 && (
+                <span className="ml-2 px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full">{stats.pending_corrections}</span>
+              )}
+            </button>
+          )}
+          <button onClick={() => setMainSection('search-logs')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${mainSection === 'search-logs' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            Search Logs
           </button>
         </div>
 
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"><pre className="whitespace-pre-wrap text-sm">{error}</pre></div>}
         {success && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{success}</div>}
 
-        {mainSection === 'members' && (
+        {/* User Creation Modal */}
+        {showUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-semibold mb-4">Create New User</h3>
+              <form onSubmit={handleCreateUser}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                  <input type="text" name="username" value={userFormData.username} onChange={handleUserFormChange} required className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                  <input type="email" name="email" value={userFormData.email} onChange={handleUserFormChange} required className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                  <input type="password" name="password" value={userFormData.password} onChange={handleUserFormChange} required className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                  <select name="role" value={userFormData.role} onChange={handleUserFormChange} className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-green-500">
+                    {roles.map(role => (
+                      <option key={role.value} value={role.value}>{role.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">{roles.find(r => r.value === userFormData.role)?.description}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-green-600 text-white py-2 rounded-md hover:bg-green-700">Create</button>
+                  <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-300 text-gray-700 py-2 rounded-md hover:bg-gray-400">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Users Section */}
+        {mainSection === 'users' && hasPermission('manage_users') && (
+          <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg md:text-xl font-semibold">User Management</h2>
+              <button onClick={() => setShowUserModal(true)} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                Create User
+              </button>
+            </div>
+
+            {users.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No users found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-max">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Username</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Role</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Last Login</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id} className="border-t border-gray-200 hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm">{user.username}</td>
+                        <td className="px-4 py-3 text-sm">{user.email}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">{user.role.replace(/_/g, ' ')}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <StatusBadge status={user.is_active ? 'active' : 'inactive'} />
+                        </td>
+                        <td className="px-4 py-3 text-sm">{user.last_login ? formatDate(user.last_login) : 'Never'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {user.id !== currentUser.id && (
+                            <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-800">
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Search Logs Section */}
+        {mainSection === 'search-logs' && (
+          <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <h2 className="text-lg md:text-xl font-semibold">Search Activity Logs</h2>
+              <select value={searchLogFilter} onChange={(e) => setSearchLogFilter(e.target.value)} className="px-4 py-2 border rounded-md focus:ring-2 focus:ring-green-500">
+                <option value="all">All Searches</option>
+                <option value="successful">Successful Only</option>
+                <option value="failed">Failed Only</option>
+              </select>
+            </div>
+
+            {searchLogs.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No search logs found.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto -mx-4 md:mx-0">
+                  <table className="w-full min-w-max">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Member #</th>
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">ID Number</th>
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Result</th>
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">IP Address</th>
+                        <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-medium text-gray-700">Searched At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {searchLogs.map((log) => (
+                        <tr key={log.id} className="border-t border-gray-200 hover:bg-gray-50">
+                          <td className="px-3 md:px-4 py-3 text-xs md:text-sm">{log.member_number}</td>
+                          <td className="px-3 md:px-4 py-3 text-xs md:text-sm">{log.id_number}</td>
+                          <td className="px-3 md:px-4 py-3 text-xs md:text-sm">
+                            {log.search_successful ? (
+                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Success</span>
+                            ) : (
+                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">Failed</span>
+                            )}
+                          </td>
+                          <td className="px-3 md:px-4 py-3 text-xs md:text-sm">{log.ip_address}</td>
+                          <td className="px-3 md:px-4 py-3 text-xs md:text-sm">{formatDate(log.searched_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-gray-600">Page {searchLogPage} of {searchLogPages}</div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSearchLogPage(p => Math.max(1, p - 1))} disabled={searchLogPage === 1} className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+                    <button onClick={() => setSearchLogPage(p => Math.min(searchLogPages, p + 1))} disabled={searchLogPage === searchLogPages} className="px-3 py-1 text-sm border rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Members Section */}
+        {mainSection === 'members' && hasPermission('manage_members') && (
           <>
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6 md:mb-8">
               <div className="flex border-b mb-6 overflow-x-auto">
@@ -402,7 +754,7 @@ export default function AdminPanel() {
                   </div>
                   <div className="mt-6">
                     <h3 className="font-medium text-gray-700 mb-2">Excel File Format:</h3>
-                    <p className="text-sm text-gray-600 mb-3">Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>Working Station</strong>, <strong>status</strong></p>
+                    <p className="text-sm text-gray-600 mb-3">Your Excel file should have these columns: <strong>name</strong>, <strong>member_number</strong>, <strong>id_number</strong>, <strong>zone</strong>, <strong>status</strong></p>
                     <button onClick={downloadTemplate} className="text-green-600 hover:text-green-800 text-sm font-medium">Download Template (CSV)</button>
                   </div>
                 </div>
@@ -472,7 +824,8 @@ export default function AdminPanel() {
           </>
         )}
 
-        {mainSection === 'verifications' && (
+        {/* Verifications Section */}
+        {mainSection === 'verifications' && hasPermission('view_verifications') && (
           <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
             <h2 className="text-lg md:text-xl font-semibold mb-6">Member Verifications</h2>
             {verifications.length === 0 ? (
@@ -516,15 +869,33 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {mainSection === 'corrections' && (
+        {/* Corrections Section */}
+        {mainSection === 'corrections' && hasPermission('view_corrections') && (
           <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-lg md:text-xl font-semibold">Correction Requests</h2>
-              <select value={correctionFilter} onChange={(e) => setCorrectionFilter(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
-                <option value="all">All</option>
-                <option value="pending">Pending</option>
-                <option value="resolved">Resolved</option>
-              </select>
+              <div className="flex gap-2 flex-wrap">
+                <select 
+                  value={correctionFilter} 
+                  onChange={(e) => setCorrectionFilter(e.target.value)} 
+                  className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+                {corrections.length > 0 && (
+                  <button
+                    onClick={handleDownloadAllCorrectionsPDF}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download All PDF
+                  </button>
+                )}
+              </div>
             </div>
 
             {corrections.length === 0 ? (
@@ -542,9 +913,19 @@ export default function AdminPanel() {
                         </div>
                         <div className="flex items-center gap-3">
                           <StatusBadge status={c.status} />
-                          {c.status === 'pending' && (
+                          {c.status === 'pending' && hasPermission('manage_corrections') && (
                             <button onClick={() => handleResolveCorrection(c.id)} className="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition">Mark Resolved</button>
+                        
                           )}
+                          <button
+                            onClick={() => handleDownloadCorrectionPDF(c.id)}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            PDF
+                          </button>
                         </div>
                       </div>
 

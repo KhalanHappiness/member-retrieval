@@ -1,6 +1,6 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, send_file
 from flask_cors import CORS
-from models import db, Member, User, Verification, CorrectionRequest
+from models import db, Member, User, Verification, CorrectionRequest, SearchLog
 import pandas as pd
 import os
 from werkzeug.utils import secure_filename
@@ -9,16 +9,17 @@ from functools import wraps
 from sqlalchemy import or_, Index
 from flask_migrate import Migrate
 from flask_mail import Mail, Message
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from io import BytesIO
 
 app = Flask(__name__)
 
 # ============= CONFIGURATION =============
-
-# Session Configuration
-app.config['SECRET_KEY'] = os.environ.get(
-    'SECRET_KEY',
-    'dev-only-secret-key-change-me'
-)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-secret-key-change-me')
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -27,7 +28,7 @@ app.config['SESSION_COOKIE_DOMAIN'] = None
 app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
-# Email Configuration (Flask-Mail)
+# Email Configuration
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True') == 'True'
@@ -36,21 +37,17 @@ app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@chunasacco.com')
 app.config['ADMIN_EMAIL'] = os.environ.get('ADMIN_EMAIL', 'admin@chunasacco.com')
 
-# Initialize Flask-Mail
 mail = Mail(app)
 
 # CORS Configuration
-CORS(app, 
-     resources={
-         r"/*": {
-             "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "https://member-retrieval-zgdp.vercel.app"],
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"],
-             "expose_headers": ["Set-Cookie"],
-             "supports_credentials": True,
-             "max_age": 3600
-         }
-     })
+CORS(app, resources={r"/*": {
+    "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "https://member-retrieval-zgdp.vercel.app"],
+    "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"],
+    "expose_headers": ["Set-Cookie"],
+    "supports_credentials": True,
+    "max_age": 3600
+}})
 
 # Database Configuration
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///sacco_members.db')
@@ -64,26 +61,17 @@ ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Initialize database
 db.init_app(app)
 migrate = Migrate(app, db)
 
 def create_indexes():
-    """Create database indexes for fast searches"""
     with app.app_context():
         try:
-            db.session.execute(db.text('''
-                CREATE INDEX IF NOT EXISTS idx_member_number ON members(member_number)
-            '''))
-            db.session.execute(db.text('''
-                CREATE INDEX IF NOT EXISTS idx_id_number ON members(id_number)
-            '''))
-            db.session.execute(db.text('''
-                CREATE INDEX IF NOT EXISTS idx_name ON members(name)
-            '''))
-            db.session.execute(db.text('''
-                CREATE INDEX IF NOT EXISTS idx_composite_search ON members(member_number, id_number)
-            '''))
+            db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_member_number ON members(member_number)'))
+            db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_id_number ON members(id_number)'))
+            db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_name ON members(name)'))
+            db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_composite_search ON members(member_number, id_number)'))
+            db.session.execute(db.text('CREATE INDEX IF NOT EXISTS idx_search_logs_date ON search_logs(searched_at)'))
             db.session.commit()
             print("✅ Database indexes created successfully")
         except Exception as e:
@@ -93,17 +81,17 @@ with app.app_context():
     db.create_all()
     create_indexes()
     
-    if User.query.count() == 0:
-        default_admin = User(
-            username='admin',
-            email='admin@sacco.com',
-            role='admin'
-        )
-        default_admin.set_password('admin123')
-        db.session.add(default_admin)
-        db.session.commit()
-        print("✅ Default admin user created: username='admin', password='admin123'")
-
+    # Only create default user if tables exist and are properly structured
+    try:
+        if User.query.count() == 0:
+            default_admin = User(username='admin', email='admin@sacco.com', role='super_admin')
+            default_admin.set_password('admin123')
+            db.session.add(default_admin)
+            db.session.commit()
+            print("✅ Default super admin created: username='admin', password='admin123'")
+    except Exception as e:
+        print(f"⚠️  Default user creation skipped: {str(e)}")
+        print("💡 Run 'flask db upgrade' to apply migrations first")
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -115,11 +103,28 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def permission_required(permission):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return jsonify({'error': 'Authentication required'}), 401
+            user = User.query.get(session['user_id'])
+            if not user or not user.has_permission(permission):
+                return jsonify({'error': 'Permission denied'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def get_client_ip():
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0]
+    return request.remote_addr
+
 # ============= AUTHENTICATION ROUTES =============
 
 @app.route('/auth/login', methods=['POST'])
 def login():
-    """Login endpoint"""
     data = request.json
     username = data.get('username')
     password = data.get('password')
@@ -148,14 +153,12 @@ def login():
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
-    """Logout endpoint"""
     session.clear()
     return jsonify({'success': True, 'message': 'Logged out successfully'})
 
 @app.route('/auth/me', methods=['GET'])
 @login_required
 def get_current_user():
-    """Get current logged in user"""
     user = User.query.get(session['user_id'])
     if not user:
         return jsonify({'error': 'User not found'}), 404
@@ -164,7 +167,6 @@ def get_current_user():
 @app.route('/auth/change-password', methods=['POST'])
 @login_required
 def change_password():
-    """Change user password"""
     data = request.json
     current_password = data.get('current_password')
     new_password = data.get('new_password')
@@ -182,12 +184,119 @@ def change_password():
     
     return jsonify({'success': True, 'message': 'Password changed successfully'})
 
-# ============= ADMIN ROUTES =============
+# ============= USER MANAGEMENT ROUTES (Super Admin Only) =============
+
+@app.route('/admin/users', methods=['GET'])
+@permission_required('manage_users')
+def get_all_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    return jsonify([user.to_dict() for user in users])
+
+@app.route('/admin/users', methods=['POST'])
+@permission_required('manage_users')
+def create_user():
+    data = request.json
+    
+    required_fields = ['username', 'email', 'password', 'role']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({'error': f'{field} is required'}), 400
+    
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Username already exists'}), 400
+    
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Email already exists'}), 400
+    
+    valid_roles = ['super_admin', 'member_manager', 'verification_viewer', 'correction_viewer']
+    if data['role'] not in valid_roles:
+        return jsonify({'error': f'Invalid role. Must be one of: {", ".join(valid_roles)}'}), 400
+    
+    new_user = User(
+        username=data['username'].strip(),
+        email=data['email'].strip(),
+        role=data['role'],
+        created_by=session['user_id']
+    )
+    new_user.set_password(data['password'])
+    
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify(new_user.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/users/<int:user_id>', methods=['PUT'])
+@permission_required('manage_users')
+def update_user(user_id):
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    
+    if data.get('username'):
+        existing = User.query.filter_by(username=data['username']).first()
+        if existing and existing.id != user_id:
+            return jsonify({'error': 'Username already exists'}), 400
+        user.username = data['username'].strip()
+    
+    if data.get('email'):
+        existing = User.query.filter_by(email=data['email']).first()
+        if existing and existing.id != user_id:
+            return jsonify({'error': 'Email already exists'}), 400
+        user.email = data['email'].strip()
+    
+    if data.get('role'):
+        valid_roles = ['super_admin', 'member_manager', 'verification_viewer', 'correction_viewer']
+        if data['role'] not in valid_roles:
+            return jsonify({'error': f'Invalid role'}), 400
+        user.role = data['role']
+    
+    if 'is_active' in data:
+        user.is_active = data['is_active']
+    
+    if data.get('password'):
+        user.set_password(data['password'])
+    
+    try:
+        db.session.commit()
+        return jsonify(user.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/users/<int:user_id>', methods=['DELETE'])
+@permission_required('manage_users')
+def delete_user(user_id):
+    if user_id == session['user_id']:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+    
+    user = User.query.get_or_404(user_id)
+    
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'message': 'User deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/roles', methods=['GET'])
+@login_required
+def get_available_roles():
+    roles = [
+        {'value': 'super_admin', 'label': 'Super Admin', 'description': 'Full access to all features'},
+        {'value': 'member_manager', 'label': 'Member Manager', 'description': 'Manage members, view verifications and corrections'},
+        {'value': 'verification_viewer', 'label': 'Verification Viewer', 'description': 'View verification records only'},
+        {'value': 'correction_viewer', 'label': 'Correction Viewer', 'description': 'View and manage correction requests'}
+    ]
+    return jsonify(roles)
+
+# ============= MEMBER MANAGEMENT ROUTES =============
 
 @app.route('/admin/members', methods=['GET'])
-@login_required
+@permission_required('manage_members')
 def get_all_members():
-    """Get members with pagination and search"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     search = request.args.get('search', '', type=str).strip()
@@ -197,14 +306,12 @@ def get_all_members():
     
     if search:
         search_pattern = f"%{search}%"
-        query = query.filter(
-            or_(
-                Member.name.ilike(search_pattern),
-                Member.member_number.ilike(search_pattern),
-                Member.id_number.ilike(search_pattern),
-                Member.zone.ilike(search_pattern)
-            )
-        )
+        query = query.filter(or_(
+            Member.name.ilike(search_pattern),
+            Member.member_number.ilike(search_pattern),
+            Member.id_number.ilike(search_pattern),
+            Member.zone.ilike(search_pattern)
+        ))
     
     query = query.order_by(Member.name)
     total = query.count()
@@ -221,9 +328,8 @@ def get_all_members():
     })
 
 @app.route('/admin/members', methods=['POST'])
-@login_required
+@permission_required('manage_members')
 def add_member():
-    """Add a single member"""
     data = request.json
     
     required_fields = ['name', 'member_number', 'id_number', 'zone']
@@ -252,9 +358,8 @@ def add_member():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/bulk-upload', methods=['POST'])
-@login_required
+@permission_required('manage_members')
 def bulk_upload():
-    """Upload members from Excel file"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -269,12 +374,9 @@ def bulk_upload():
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
-            return jsonify({
-                'error': f'Missing required columns: {", ".join(missing_columns)}'
-            }), 400
+            return jsonify({'error': f'Missing required columns: {", ".join(missing_columns)}'}), 400
         
-        existing_numbers = {m.member_number for m in 
-                          db.session.query(Member.member_number).all()}
+        existing_numbers = {m.member_number for m in db.session.query(Member.member_number).all()}
         
         added_count = 0
         skipped_count = 0
@@ -328,9 +430,8 @@ def bulk_upload():
         return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
 
 @app.route('/admin/members/<int:member_id>', methods=['PUT'])
-@login_required
+@permission_required('manage_members')
 def update_member(member_id):
-    """Update a member"""
     member = Member.query.get_or_404(member_id)
     data = request.json
     
@@ -348,9 +449,8 @@ def update_member(member_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/<int:member_id>', methods=['DELETE'])
-@login_required
+@permission_required('manage_members')
 def delete_member(member_id):
-    """Delete a member"""
     member = Member.query.get_or_404(member_id)
     
     try:
@@ -362,9 +462,8 @@ def delete_member(member_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/bulk-delete', methods=['POST'])
-@login_required
+@permission_required('manage_members')
 def bulk_delete_members():
-    """Delete multiple members at once"""
     data = request.json
     member_ids = data.get('ids', [])
     
@@ -387,26 +486,28 @@ def bulk_delete_members():
 @app.route('/admin/stats', methods=['GET'])
 @login_required
 def get_stats():
-    """Get database statistics"""
     total_members = Member.query.count()
     zones = db.session.query(Member.zone).distinct().all()
     total_verifications = Verification.query.count()
     pending_corrections = CorrectionRequest.query.filter_by(status='pending').count()
+    total_searches = SearchLog.query.count()
+    successful_searches = SearchLog.query.filter_by(search_successful=True).count()
     
     return jsonify({
         'total_members': total_members,
         'total_zones': len(zones),
         'zones': [z[0] for z in zones],
         'total_verifications': total_verifications,
-        'pending_corrections': pending_corrections
+        'pending_corrections': pending_corrections,
+        'total_searches': total_searches,
+        'successful_searches': successful_searches
     })
 
-# ============= NEW: VERIFICATION ROUTES =============
+# ============= VERIFICATION ROUTES =============
 
 @app.route('/admin/verifications', methods=['GET'])
-@login_required
+@permission_required('view_verifications')
 def get_verifications():
-    """Get all verification records"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
@@ -425,10 +526,11 @@ def get_verifications():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ============= CORRECTION ROUTES =============
+
 @app.route('/admin/corrections', methods=['GET'])
-@login_required
+@permission_required('view_corrections')
 def get_corrections():
-    """Get all correction requests"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     status = request.args.get('status', 'all')
@@ -454,58 +556,89 @@ def get_corrections():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/corrections/<int:correction_id>/resolve', methods=['POST'])
-@login_required
+@permission_required('manage_corrections')
 def resolve_correction(correction_id):
-    """Mark a correction request as resolved"""
     try:
         correction = CorrectionRequest.query.get_or_404(correction_id)
         correction.status = 'resolved'
         correction.resolved_at = datetime.utcnow()
+        correction.resolved_by = session.get('user_id')
         
         db.session.commit()
         
-        return jsonify({
-            'success': True,
-            'message': 'Correction marked as resolved'
-        }), 200
+        return jsonify({'success': True, 'message': 'Correction marked as resolved'}), 200
         
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# ============= SEARCH LOGS =============
+
+@app.route('/admin/search-logs', methods=['GET'])
+@login_required
+def get_search_logs():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    success_filter = request.args.get('success', 'all')
+    
+    try:
+        query = SearchLog.query
+        
+        if success_filter == 'successful':
+            query = query.filter_by(search_successful=True)
+        elif success_filter == 'failed':
+            query = query.filter_by(search_successful=False)
+        
+        query = query.order_by(SearchLog.searched_at.desc())
+        logs = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        return jsonify({
+            'logs': [log.to_dict() for log in logs.items],
+            'total': logs.total,
+            'page': page,
+            'per_page': per_page,
+            'pages': logs.pages
+        }), 200
+        
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # ============= PUBLIC ROUTES =============
 
 @app.route('/search', methods=['POST'])
 def search_member():
-    """Search for a member by member number and ID number"""
     data = request.json
     member_number = data.get('member_number', '').strip()
     id_number = data.get('id_number', '').strip()
     
     if not member_number or not id_number:
-        return jsonify({
-            'error': 'Both member number and ID number are required'
-        }), 400
+        return jsonify({'error': 'Both member number and ID number are required'}), 400
     
-    member = Member.query.filter_by(
+    member = Member.query.filter_by(member_number=member_number, id_number=id_number).first()
+    
+    # Log the search
+    search_log = SearchLog(
+        member_id=member.id if member else None,
         member_number=member_number,
-        id_number=id_number
-    ).first()
+        id_number=id_number,
+        search_successful=member is not None,
+        ip_address=get_client_ip(),
+        user_agent=request.headers.get('User-Agent', '')[:500]
+    )
+    
+    try:
+        db.session.add(search_log)
+        db.session.commit()
+    except Exception as e:
+        print(f"Failed to log search: {str(e)}")
     
     if member:
-        return jsonify({
-            'found': True,
-            'member': member.to_dict()
-        })
+        return jsonify({'found': True, 'member': member.to_dict()})
     else:
-        return jsonify({
-            'found': False,
-            'message': 'No member found with the provided details'
-        })
+        return jsonify({'found': False, 'message': 'No member found with the provided details'})
 
 @app.route('/verify-details', methods=['POST'])
 def verify_details():
-    """Record that a member has verified their details are correct"""
     data = request.json
     
     try:
@@ -514,7 +647,6 @@ def verify_details():
         if not member or member.member_number != data['member_number']:
             return jsonify({'error': 'Member not found'}), 404
         
-        # Create verification record
         verification = Verification(
             member_id=member.id,
             member_number=member.member_number,
@@ -528,10 +660,7 @@ def verify_details():
         
         print(f"✅ Member verified: {member.name} ({member.member_number})")
         
-        return jsonify({
-            'success': True,
-            'message': 'Details verified successfully'
-        }), 200
+        return jsonify({'success': True, 'message': 'Details verified successfully'}), 200
         
     except Exception as e:
         db.session.rollback()
@@ -540,7 +669,6 @@ def verify_details():
 
 @app.route('/submit-correction', methods=['POST'])
 def submit_correction():
-    """Submit a correction request for member details"""
     data = request.json
     
     try:
@@ -549,11 +677,9 @@ def submit_correction():
         if not member or member.member_number != data['member_number']:
             return jsonify({'error': 'Member not found'}), 404
         
-        # Validate contact info
         if not data.get('email') and not data.get('phone'):
             return jsonify({'error': 'Please provide either email or phone number'}), 400
         
-        # Create correction request
         correction = CorrectionRequest(
             member_id=member.id,
             member_number=data['member_number'],
@@ -573,63 +699,320 @@ def submit_correction():
         
         print(f"✅ Correction request submitted: {data['member_number']}")
         
-        # Send email notification to admin
         try:
-            if app.config['MAIL_USERNAME']:  # Only send if email is configured
+            if app.config['MAIL_USERNAME']:
                 msg = Message(
                     subject=f'Member Correction Request - {data["member_number"]}',
                     recipients=[app.config['ADMIN_EMAIL']],
                     body=f"""
-                            New correction request received from Chuna DT Sacco Member Portal:
+                                New correction request received:
 
-                            Member Number: {data['member_number']}
-                            ID Number: {data['id_number']}
+                                Member Number: {data['member_number']}
+                                ID Number: {data['id_number']}
 
-                            CURRENT DETAILS:
-                            • Name: {data['current_name']}
-                            • Zone: {data['current_zone']}
-                            • Status: {data['current_status']}
+                                CURRENT DETAILS:
+                                • Name: {data['current_name']}
+                                • Zone: {data['current_zone']}
+                                • Status: {data['current_status']}
 
-                            REQUESTED CORRECTIONS:
-                            • Name: {data['correct_name']}
-                            • Zone: {data['correct_zone']}
+                                REQUESTED CORRECTIONS:
+                                • Name: {data['correct_name']}
+                                • Zone: {data['correct_zone']}
 
-                            CONTACT INFORMATION:
-                            • Email: {data.get('email', 'Not provided')}
-                            • Phone: {data.get('phone', 'Not provided')}
+                                CONTACT:
+                                • Email: {data.get('email', 'Not provided')}
+                                • Phone: {data.get('phone', 'Not provided')}
 
-                            Additional Notes:
-                            {data.get('additional_notes', 'None')}
-
-                            Please review this correction request and contact the member to resolve the issue.
-                            Log in to the admin panel to view all pending corrections.
-                                                """.strip()
+                                Additional Notes: {data.get('additional_notes', 'None')}
+                                                    """.strip()
                 )
                 mail.send(msg)
-                print(f"✅ Email sent to admin for correction request")
-        except Exception as email_error:
-            print(f"⚠️ Email sending failed: {email_error}")
-            # Continue even if email fails
+        except Exception as e:
+            print(f"⚠️ Email failed: {e}")
         
-        return jsonify({
-            'success': True,
-            'message': 'Correction request submitted successfully',
-            'correction_id': correction.id
-        }), 200
+        return jsonify({'success': True, 'message': 'Correction request submitted successfully', 'correction_id': correction.id}), 200
         
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Correction submission error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/corrections/<int:correction_id>/download-pdf', methods=['GET'])
+@permission_required('view_corrections')
+def download_correction_pdf(correction_id):
+    """Generate and download PDF for a specific correction request"""
+    try:
+        print(f"📄 Starting PDF generation for correction {correction_id}")
+        correction = CorrectionRequest.query.get_or_404(correction_id)
+        print(f"✅ Found correction: {correction.member_number}")
+        
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72,
+                              topMargin=72, bottomMargin=18)
+        
+        # Container for PDF elements
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#166534'),
+            spaceAfter=30,
+            alignment=1  # Center
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#166534'),
+            spaceAfter=12,
+            spaceBefore=12
+        )
+        
+        # Title
+        title = Paragraph("Member Correction Request", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Request Information
+        elements.append(Paragraph("Request Information", heading_style))
+        
+        request_data = [
+            ['Request ID:', str(correction.id)],
+            ['Status:', correction.status.upper()],
+            ['Submitted:', correction.submitted_at.strftime('%B %d, %Y at %I:%M %p')],
+        ]
+        
+        if correction.resolved_at:
+            request_data.append(['Resolved:', correction.resolved_at.strftime('%B %d, %Y at %I:%M %p')])
+        
+        request_table = Table(request_data, colWidths=[2*inch, 4*inch])
+        request_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB'))
+        ]))
+        elements.append(request_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Member Identification
+        elements.append(Paragraph("Member Identification", heading_style))
+        
+        id_data = [
+            ['Member Number:', correction.member_number],
+            ['ID Number:', correction.id_number],
+        ]
+        
+        id_table = Table(id_data, colWidths=[2*inch, 4*inch])
+        id_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB'))
+        ]))
+        elements.append(id_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Comparison Table
+        elements.append(Paragraph("Requested Changes", heading_style))
+        
+        comparison_data = [
+            ['Field', 'Current Information', 'Requested Correction'],
+            ['Name', correction.current_name, correction.correct_name],
+            ['Working Station', correction.current_zone, correction.correct_zone],
+            ['Status', correction.current_status, '-']
+        ]
+        
+        comparison_table = Table(comparison_data, colWidths=[1.5*inch, 2.25*inch, 2.25*inch])
+        comparison_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#166534')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+            ('TOPPADDING', (0, 1), (-1, -1), 10),
+        ]))
+        elements.append(comparison_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Contact Information
+        elements.append(Paragraph("Contact Information", heading_style))
+        
+        contact_data = [
+            ['Email:', correction.email or 'Not provided'],
+            ['Phone:', correction.phone or 'Not provided'],
+        ]
+        
+        contact_table = Table(contact_data, colWidths=[2*inch, 4*inch])
+        contact_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E5E7EB'))
+        ]))
+        elements.append(contact_table)
+        
+        # Additional Notes
+        if correction.additional_notes:
+            elements.append(Spacer(1, 0.3*inch))
+            elements.append(Paragraph("Additional Notes", heading_style))
+            notes_style = ParagraphStyle(
+                'Notes',
+                parent=styles['BodyText'],
+                fontSize=10,
+                leading=14
+            )
+            elements.append(Paragraph(correction.additional_notes, notes_style))
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Prepare response
+        buffer.seek(0)
+        filename = f"correction_request_{correction.id}_{correction.member_number}.pdf"
+        
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ PDF Generation Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/admin/corrections/download-all-pdf', methods=['GET'])
+@permission_required('view_corrections')
+def download_all_corrections_pdf():
+    """Generate and download PDF for all correction requests"""
+    try:
+        print("📄 Starting bulk PDF generation")
+        status = request.args.get('status', 'all')
+        print(f"Filter status: {status}")
+        
+        query = CorrectionRequest.query
+        if status != 'all':
+            query = query.filter_by(status=status)
+        
+        corrections = query.order_by(CorrectionRequest.submitted_at.desc()).all()
+        print(f"✅ Found {len(corrections)} corrections")
+        
+        if not corrections:
+            return jsonify({'error': 'No corrections found'}), 404
+        
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50,
+                              topMargin=50, bottomMargin=30)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=20,
+            textColor=colors.HexColor('#166534'),
+            spaceAfter=20,
+            alignment=1
+        )
+        
+        title = Paragraph("Member Correction Requests Report", title_style)
+        elements.append(title)
+        
+        subtitle = Paragraph(
+            f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}<br/>Total Requests: {len(corrections)}",
+            ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=10, alignment=1, textColor=colors.grey)
+        )
+        elements.append(subtitle)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Summary table data
+        table_data = [['ID', 'Member #', 'Zone Change', 'Status', 'Submitted']]
+        
+        for c in corrections:
+            zone_change = f"{c.current_zone} → {c.correct_zone}"
+            if len(zone_change) > 35:
+                zone_change = zone_change[:32] + "..."
+            
+            table_data.append([
+                str(c.id),
+                c.member_number,
+                zone_change,
+                c.status.upper(),
+                c.submitted_at.strftime('%Y-%m-%d')
+            ])
+        
+        # Create table
+        table = Table(table_data, colWidths=[0.5*inch, 1*inch, 2.5*inch, 0.8*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#166534')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ]))
+        
+        elements.append(table)
+        
+        # Build PDF
+        doc.build(elements)
+        
+        buffer.seek(0)
+        filename = f"all_corrections_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"❌ PDF Generation Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 # ============= UTILITY ROUTES =============
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     return jsonify({'status': 'healthy', 'message': 'SACCO API is running'})
-
-# ============= ERROR HANDLERS =============
 
 @app.errorhandler(404)
 def not_found(e):
@@ -645,9 +1028,9 @@ if __name__ == '__main__':
     print("🚀 SACCO Management System API Starting...")
     print("="*60)
     print(f"📍 Running on: http://127.0.0.1:5000")
-    print(f"👤 Default Admin: username='admin', password='admin123'")
+    print(f"👤 Default Super Admin: username='admin', password='admin123'")
     print(f"📧 Email: {'CONFIGURED' if app.config['MAIL_USERNAME'] else 'NOT CONFIGURED'}")
-    print(f"✅ Verification & Correction features: ENABLED")
+    print(f"✅ RBAC & Search Logging: ENABLED")
     print("="*60 + "\n")
     
     app.run(debug=True, port=5000)
