@@ -171,129 +171,131 @@ export default function PublicSearch() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* Header */}
-        <div className="flex items-center justify-center mb-8">
-           <img 
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-indigo-100 flex flex-col">
+      <div className="flex-grow flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          {/* Header */}
+          <div className="flex items-center justify-center mb-8">
+            <img 
               src={chunaLogo} 
               alt="Chuna DT Sacco Logo" 
               className="h-10 sm:h-10 lg:h-14 w-auto hover:opacity-90 transition-opacity"
             />
-        </div>
-        <div className="text-center mb-4">
-          <p className="text-sm text-gray-600">Chuna Sacco Member details Verification Portal</p>
-        </div>
-
-        {/* Search Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="space-y-4">
-            {/* Member Number Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Member Number
-              </label>
-              <input
-                type="text"
-                name="member_number"
-                value={searchData.member_number}
-                onChange={handleChange}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter member number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* ID Number Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                ID Number
-              </label>
-              <input
-                type="text"
-                name="id_number"
-                value={searchData.id_number}
-                onChange={handleChange}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter ID number"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Search Button */}
-            <button
-              onClick={handleSearch}
-              disabled={searching}
-              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition duration-200 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {searching ? 'Searching...' : 'Search'}
-            </button>
+          </div>
+          <div className="text-center mb-4">
+            <p className="text-sm text-gray-600">Chuna Sacco Member details Verification Portal</p>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {successMessage && (
-            <div className="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-              <p className="text-sm">{successMessage}</p>
-            </div>
-          )}
-
-          {/* Result Display */}
-          {result && !successMessage && (
-            <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
-              <div className="flex items-center mb-4">
-                <div className="bg-green-500 rounded-full p-2 mr-3">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-green-800">Member Found!</h3>
-              </div>
-              
-              <div className="space-y-2 mb-6">
-                <div className="flex justify-between py-2 border-b border-green-200">
-                  <span className="font-medium text-gray-700">Name:</span>
-                  <span className="text-gray-900">{result.name}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-green-200">
-                  <span className="font-medium text-gray-700">Member Number:</span>
-                  <span className="text-gray-900">{result.member_number}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-green-200">
-                  <span className="font-medium text-gray-700">Status:</span>
-                  <span className="text-gray-900 capitalize">{result.status}</span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="font-medium text-gray-700">Working Station:</span>
-                  <span className="text-gray-900">{result.zone}</span>
-                </div>
+          {/* Search Card */}
+          <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className="space-y-4">
+              {/* Member Number Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Member Number
+                </label>
+                <input
+                  type="text"
+                  name="member_number"
+                  value={searchData.member_number}
+                  onChange={handleChange}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Enter member number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
               </div>
 
-              {/* Verification Buttons */}
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-700 mb-2">Are these details correct?</p>
-                <button
-                  onClick={handleVerifyCorrect}
-                  disabled={verifying}
-                  className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition duration-200 font-medium disabled:bg-gray-400"
-                >
-                  {verifying ? 'Verifying...' : '✓ Yes, Details are Correct'}
-                </button>
-                <button
-                  onClick={handleOpenCorrectionModal}
-                  className="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-200 font-medium"
-                >
-                  ✗ No, Submit Correction
-                </button>
+              {/* ID Number Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ID Number
+                </label>
+                <input
+                  type="text"
+                  name="id_number"
+                  value={searchData.id_number}
+                  onChange={handleChange}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Enter ID number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
               </div>
+
+              {/* Search Button */}
+              <button
+                onClick={handleSearch}
+                disabled={searching}
+                className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition duration-200 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {searching ? 'Searching...' : 'Search'}
+              </button>
             </div>
-          )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {successMessage && (
+              <div className="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+                <p className="text-sm">{successMessage}</p>
+              </div>
+            )}
+
+            {/* Result Display */}
+            {result && !successMessage && (
+              <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+                <div className="flex items-center mb-4">
+                  <div className="bg-green-500 rounded-full p-2 mr-3">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-green-800">Member Found!</h3>
+                </div>
+                
+                <div className="space-y-2 mb-6">
+                  <div className="flex justify-between py-2 border-b border-green-200">
+                    <span className="font-medium text-gray-700">Name:</span>
+                    <span className="text-gray-900">{result.name}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-green-200">
+                    <span className="font-medium text-gray-700">Member Number:</span>
+                    <span className="text-gray-900">{result.member_number}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-green-200">
+                    <span className="font-medium text-gray-700">Status:</span>
+                    <span className="text-gray-900 capitalize">{result.status}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="font-medium text-gray-700">Working Station:</span>
+                    <span className="text-gray-900">{result.zone}</span>
+                  </div>
+                </div>
+
+                {/* Verification Buttons */}
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Are these details correct?</p>
+                  <button
+                    onClick={handleVerifyCorrect}
+                    disabled={verifying}
+                    className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition duration-200 font-medium disabled:bg-gray-400"
+                  >
+                    {verifying ? 'Verifying...' : '✓ Yes, Details are Correct'}
+                  </button>
+                  <button
+                    onClick={handleOpenCorrectionModal}
+                    className="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-200 font-medium"
+                  >
+                    ✗ No, Submit Correction
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -411,6 +413,26 @@ export default function PublicSearch() {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="bg-white text-black py-8 mt-8">
+        <div className="text-center text-gray-600 px-4">
+          <p className="text-sm">
+            &copy; 2026 ALL RIGHTS RESERVED - ICT DEPARTMENT. 
+            <br className="sm:hidden" />
+            <span className="block sm:inline sm:ml-1">
+              For details please contact us via{' '}
+              <a href="mailto:ICT.CHUNA@UONBI.AC.KE" className="text-green-600 hover:underline">
+                ICT.CHUNA@UONBI.AC.KE
+              </a>
+              {' '}or{' '}
+              <a href="mailto:ebundi@uonbi.ac.ke" className="text-green-600 hover:underline">
+                ebundi@uonbi.ac.ke
+              </a>
+            </span>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

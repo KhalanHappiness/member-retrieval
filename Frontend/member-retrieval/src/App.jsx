@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
+import Landing from './pages/Landing';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
 
@@ -13,7 +14,7 @@ function AppContent({ isAuthenticated, currentUser, handleLoginSuccess }) {
   const location = useLocation();
   
   // Hide navbar on home page (public search)
-  const showNavbar = location.pathname !== '/' && location.pathname !== '/admin/login';
+  const showNavbar = location.pathname !== '/' && location.pathname !== '/verify' && location.pathname !== '/admin/login';
 
   return (
     <div className="App">
@@ -21,7 +22,8 @@ function AppContent({ isAuthenticated, currentUser, handleLoginSuccess }) {
       
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/verify" element={<Home />} />
         <Route 
           path="/admin/login" 
           element={
@@ -43,7 +45,7 @@ function AppContent({ isAuthenticated, currentUser, handleLoginSuccess }) {
           }
         />
         
-        {/* Catch all - redirect to home */}
+        {/* Catch all - redirect to landing */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
