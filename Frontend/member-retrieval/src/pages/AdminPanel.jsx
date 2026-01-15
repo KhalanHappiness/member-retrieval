@@ -33,6 +33,9 @@ export default function AdminPanel() {
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [correctionSearchFilter, setCorrectionSearchFilter] = useState('');
+
+
 
   const roles = [
     { value: 'super_admin', label: 'Super Admin', description: 'Full access to all features' },
@@ -92,7 +95,7 @@ useEffect(() => {
   
   setSelectedMembers([]);
   setSelectAll(false);
-}, [currentUser, currentPage, searchFilter, mainSection, verificationPage, correctionPage, correctionFilter, searchLogPage, searchLogFilter]);  const hasPermission = (permission) => {
+}, [currentUser, currentPage, searchFilter, mainSection, verificationPage, correctionPage, correctionFilter, correctionSearchFilter, searchLogPage, searchLogFilter]);  const hasPermission = (permission) => {
     if (!currentUser) return false;
     const permissions = {
       'super_admin': ['manage_users', 'manage_members', 'view_verifications', 'view_corrections', 'manage_corrections'],
@@ -154,19 +157,24 @@ useEffect(() => {
   };
 
   const fetchCorrections = async () => {
-    if (!hasPermission('view_corrections')) return;
-    try {
-      const params = new URLSearchParams({ page: correctionPage, per_page: 20, status: correctionFilter });
-      const response = await fetch(`${API_URL}/admin/corrections?${params}`, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setCorrections(data.corrections || []);
-        setCorrectionPages(data.pages || 1);
+      if (!hasPermission('view_corrections')) return;
+      try {
+        const params = new URLSearchParams({ 
+          page: correctionPage, 
+          per_page: 20, 
+          status: correctionFilter,
+          search: correctionSearchFilter  
+        });
+        const response = await fetch(`${API_URL}/admin/corrections?${params}`, { credentials: 'include' });
+        if (response.ok) {
+          const data = await response.json();
+          setCorrections(data.corrections || []);
+          setCorrectionPages(data.pages || 1);
+        }
+      } catch (err) {
+        console.error('Failed to fetch corrections');
       }
-    } catch (err) {
-      console.error('Failed to fetch corrections');
-    }
-  };
+    };
 
   const fetchSearchLogs = async () => {
     try {
@@ -980,24 +988,45 @@ useEffect(() => {
         )}
 
         {/* Corrections Section */}
+      {/* Corrections Section */}
         {mainSection === 'corrections' && hasPermission('view_corrections') && (
           <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            {/* Search and Filter Controls */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
               <h2 className="text-lg md:text-xl font-semibold">Correction Requests</h2>
-              <div className="flex gap-2 flex-wrap">
+              
+              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                {/* Search Input */}
+                <input
+                  type="text"
+                  placeholder="Search by member #, ID, name..."
+                  value={correctionSearchFilter}
+                  onChange={(e) => {
+                    setCorrectionSearchFilter(e.target.value);
+                    setCorrectionPage(1);
+                  }}
+                  className="flex-1 sm:w-64 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                />
+                
+                {/* Status Filter */}
                 <select 
                   value={correctionFilter} 
-                  onChange={(e) => setCorrectionFilter(e.target.value)} 
+                  onChange={(e) => {
+                    setCorrectionFilter(e.target.value);
+                    setCorrectionPage(1);
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                 >
-                  <option value="all">All</option>
+                  <option value="all">All Status</option>
                   <option value="pending">Pending</option>
                   <option value="resolved">Resolved</option>
                 </select>
+                
+                {/* Download All PDF Button */}
                 {corrections.length > 0 && (
                   <button
                     onClick={handleDownloadAllCorrectionsPDF}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center gap-2"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm flex items-center gap-2 whitespace-nowrap"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1008,8 +1037,33 @@ useEffect(() => {
               </div>
             </div>
 
+            {/* Search Results Info */}
+            {correctionSearchFilter && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <span className="font-medium">Searching for:</span> "{correctionSearchFilter}"
+                  {corrections.length > 0 ? (
+                    <span> - Found {corrections.length} result(s)</span>
+                  ) : (
+                    <span> - No results found</span>
+                  )}
+                </p>
+                <button
+                  onClick={() => {
+                    setCorrectionSearchFilter('');
+                    setCorrectionPage(1);
+                  }}
+                  className="mt-2 text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
+
             {corrections.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No correction requests.</p>
+              <p className="text-gray-500 text-center py-8">
+                {correctionSearchFilter ? 'No correction requests found matching your search.' : 'No correction requests.'}
+              </p>
             ) : (
               <>
                 <div className="space-y-4">
@@ -1025,7 +1079,6 @@ useEffect(() => {
                           <StatusBadge status={c.status} />
                           {c.status === 'pending' && hasPermission('manage_corrections') && (
                             <button onClick={() => handleResolveCorrection(c.id)} className="px-4 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition">Mark Resolved</button>
-                        
                           )}
                           <button
                             onClick={() => handleDownloadCorrectionPDF(c.id)}

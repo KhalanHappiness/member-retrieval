@@ -707,12 +707,28 @@ def get_corrections():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     status = request.args.get('status', 'all')
+    search = request.args.get('search', '', type=str).strip()  # ADD THIS LINE
     
     try:
         query = CorrectionRequest.query
         
+        # Status filter
         if status != 'all':
             query = query.filter_by(status=status)
+        
+        # Search filter - ADD THIS BLOCK
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(or_(
+                CorrectionRequest.member_number.ilike(search_pattern),
+                CorrectionRequest.id_number.ilike(search_pattern),
+                CorrectionRequest.current_name.ilike(search_pattern),
+                CorrectionRequest.correct_name.ilike(search_pattern),
+                CorrectionRequest.current_zone.ilike(search_pattern),
+                CorrectionRequest.correct_zone.ilike(search_pattern),
+                CorrectionRequest.email.ilike(search_pattern),
+                CorrectionRequest.phone.ilike(search_pattern)
+            ))
         
         query = query.order_by(CorrectionRequest.submitted_at.desc())
         corrections = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -727,7 +743,7 @@ def get_corrections():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
 @app.route('/admin/corrections/<int:correction_id>/resolve', methods=['POST'])
 @permission_required('manage_corrections')
 def resolve_correction(correction_id):
