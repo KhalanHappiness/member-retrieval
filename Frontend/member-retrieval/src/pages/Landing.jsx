@@ -58,7 +58,7 @@ export default function Landing() {
                       <span className="font-semibold text-gray-700">Verification Active</span>
                     </div>
                     <div className="text-gray-600">
-                      <div className="mb-1">Member: 15709</div>
+                      <div className="mb-1">Member: 16000</div>
                       <div className="text-green-600 font-semibold">✓ Verified</div>
                     </div>
                   </div>
