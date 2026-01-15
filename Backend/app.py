@@ -466,6 +466,160 @@ def update_member(member_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/admin/members/bulk-update', methods=['POST'])
+@permission_required('manage_members')
+def bulk_update_members():
+    """
+    Bulk update members from uploaded Excel file
+    Expected columns: member_number (required for matching), name, id_number, zone, status
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '' or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file. Please upload an Excel file (.xlsx or .xls)'}), 400
+    
+    try:
+        df = pd.read_excel(file)
+        
+        # member_number is required to identify which record to update
+        if 'member_number' not in df.columns:
+            return jsonify({'error': 'Missing required column: member_number'}), 400
+        
+        # Track statistics
+        updated_count = 0
+        not_found_count = 0
+        error_count = 0
+        errors = []
+        
+        for index, row in df.iterrows():
+            try:
+                # Skip rows with missing member_number
+                if pd.isna(row['member_number']):
+                    error_count += 1
+                    errors.append(f"Row {index + 2}: Missing member_number")
+                    continue
+                
+                member_num = str(row['member_number']).strip()
+                
+                # Find the member
+                member = Member.query.filter_by(member_number=member_num).first()
+                
+                if not member:
+                    not_found_count += 1
+                    errors.append(f"Row {index + 2}: Member {member_num} not found")
+                    continue
+                
+                # Update fields if they exist in the Excel and are not empty
+                if 'name' in df.columns and not pd.isna(row['name']):
+                    member.name = str(row['name']).strip()
+                
+                if 'id_number' in df.columns and not pd.isna(row['id_number']):
+                    member.id_number = str(row['id_number']).strip()
+                
+                if 'zone' in df.columns and not pd.isna(row['zone']):
+                    member.zone = str(row['zone']).strip()
+                
+                if 'status' in df.columns and not pd.isna(row['status']):
+                    member.status = str(row['status']).strip()
+                
+                updated_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Row {index + 2}: {str(e)}")
+        
+        # Commit all changes at once
+        if updated_count > 0:
+            db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'updated': updated_count,
+            'not_found': not_found_count,
+            'errors': error_count,
+            'error_details': errors[:20] if errors else None,
+            'message': f'Successfully updated {updated_count} members'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to process file: {str(e)}'}), 500
+
+
+@app.route('/admin/members/bulk-update-json', methods=['POST'])
+@permission_required('manage_members')
+def bulk_update_members_json():
+    """
+    Bulk update members from JSON data
+    Expected format: { "updates": [{ "member_number": "...", "name": "...", ... }] }
+    """
+    data = request.json
+    updates = data.get('updates', [])
+    
+    if not updates or not isinstance(updates, list):
+        return jsonify({'error': 'Please provide a list of updates'}), 400
+    
+    try:
+        updated_count = 0
+        not_found_count = 0
+        error_count = 0
+        errors = []
+        
+        for idx, update_data in enumerate(updates):
+            try:
+                member_num = update_data.get('member_number')
+                
+                if not member_num:
+                    error_count += 1
+                    errors.append(f"Update {idx + 1}: Missing member_number")
+                    continue
+                
+                member = Member.query.filter_by(member_number=member_num).first()
+                
+                if not member:
+                    not_found_count += 1
+                    errors.append(f"Update {idx + 1}: Member {member_num} not found")
+                    continue
+                
+                # Update provided fields
+                if 'name' in update_data and update_data['name']:
+                    member.name = update_data['name'].strip()
+                
+                if 'id_number' in update_data and update_data['id_number']:
+                    member.id_number = update_data['id_number'].strip()
+                
+                if 'zone' in update_data and update_data['zone']:
+                    member.zone = update_data['zone'].strip()
+                
+                if 'status' in update_data and update_data['status']:
+                    member.status = update_data['status'].strip()
+                
+                updated_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Update {idx + 1}: {str(e)}")
+        
+        if updated_count > 0:
+            db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'updated': updated_count,
+            'not_found': not_found_count,
+            'errors': error_count,
+            'error_details': errors[:20] if errors else None,
+            'message': f'Successfully updated {updated_count} members'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/members/<int:member_id>', methods=['DELETE'])
 @permission_required('manage_members')

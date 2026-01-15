@@ -427,6 +427,54 @@ useEffect(() => {
     setCurrentPage(1);
   };
 
+  const handleBulkUpdateFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  setError('');
+  setSuccess('');
+  setUploading(true);
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await fetch(`${API_URL}/admin/members/bulk-update`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      let message = `Successfully updated ${data.updated} member(s)`;
+      if (data.not_found > 0) {
+        message += `, ${data.not_found} member(s) not found`;
+      }
+      if (data.errors > 0) {
+        message += `, ${data.errors} error(s)`;
+      }
+      
+      setSuccess(message);
+      
+      if (data.error_details && data.error_details.length > 0) {
+        setError(`Some errors occurred:\n${data.error_details.slice(0, 10).join('\n')}`);
+      }
+      
+      fetchMembers();
+      fetchStats();
+    } else {
+      setError(data.error || 'Failed to update members');
+    }
+  } catch (err) {
+    setError('Network error. Please try again.');
+  } finally {
+    setUploading(false);
+    e.target.value = '';
+  }
+};
+
   const downloadTemplate = () => {
     const csvContent = "name,member_number,id_number,zone,status\nJohn Doe,M001,12345678,Zone A,active\nJane Smith,M002,87654321,Zone B,active";
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -436,6 +484,17 @@ useEffect(() => {
     a.download = 'member_template.csv';
     a.click();
   };
+
+  const downloadBulkUpdateTemplate = () => {
+    const csvContent = "member_number,name,id_number,zone,status\nM001,John Doe Updated,,Zone C,\nM002,,,Zone D,active\nM003,Jane Smith,98765432,,dormant";
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bulk_update_template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
@@ -700,9 +759,11 @@ useEffect(() => {
         {mainSection === 'members' && hasPermission('manage_members') && (
           <>
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6 md:mb-8">
+              
               <div className="flex border-b mb-6 overflow-x-auto">
                 <button onClick={() => setActiveTab('add')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${activeTab === 'add' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>Add Single Member</button>
                 <button onClick={() => setActiveTab('bulk')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${activeTab === 'bulk' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>Bulk Upload</button>
+                <button onClick={() => setActiveTab('bulk-update')} className={`px-4 md:px-6 py-3 font-medium text-sm md:text-base whitespace-nowrap ${activeTab === 'bulk-update' ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500 hover:text-gray-700'}`}>Bulk Update</button>
               </div>
 
               {activeTab === 'add' && (
@@ -759,6 +820,55 @@ useEffect(() => {
                   </div>
                 </div>
               )}
+
+              {/* NEW BULK UPDATE TAB */}
+              {activeTab === 'bulk-update' && (
+                <div>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 md:p-8 text-center">
+                    <svg className="mx-auto h-10 md:h-12 w-10 md:w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                      <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <div className="mt-4">
+                      <label className="cursor-pointer">
+                        <span className="mt-2 block text-sm font-medium text-gray-900">
+                          {uploading ? 'Updating...' : 'Click to upload Excel file for bulk update'}
+                        </span>
+                        <input 
+                          type="file" 
+                          accept=".xlsx,.xls" 
+                          onChange={handleBulkUpdateFileUpload} 
+                          disabled={uploading} 
+                          className="hidden" 
+                        />
+                      </label>
+                      <p className="mt-1 text-xs text-gray-500">Excel files (.xlsx, .xls) only</p>
+                    </div>
+                  </div>
+                  <div className="mt-6">
+                    <h3 className="font-medium text-gray-700 mb-2">Excel File Format for Updates:</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Your Excel file must include <strong>member_number</strong> column to identify members. 
+                      Other columns are optional: <strong>name</strong>, <strong>id_number</strong>, <strong>zone</strong>, <strong>status</strong>
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                      <h4 className="font-medium text-blue-900 mb-2">💡 How it works:</h4>
+                      <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                        <li><strong>member_number</strong> is required to find the member to update</li>
+                        <li>Only include columns you want to update (leave others blank or omit them)</li>
+                        <li>Empty cells will be ignored (won't overwrite existing data)</li>
+                        <li>Members not found will be reported in the results</li>
+                      </ul>
+                    </div>
+                    <button 
+                      onClick={downloadBulkUpdateTemplate} 
+                      className="text-green-600 hover:text-green-800 text-sm font-medium"
+                    >
+                      Download Update Template (CSV)
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
 
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
