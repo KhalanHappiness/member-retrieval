@@ -16,6 +16,51 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib import colors
 from io import BytesIO
 
+def format_id_number(value):
+    """
+    Format ID number to preserve leading zeros
+    Kenyan ID numbers are typically 7-8 digits, pad to 8 digits
+    """
+    if pd.isna(value):
+        return ''
+    
+    # Convert to string and remove decimal point if present (.0 from Excel)
+    str_value = str(value).replace('.0', '').strip()
+    
+    # Remove any spaces
+    str_value = str_value.replace(' ', '')
+    
+    # If it's numeric and less than 8 digits, pad with zeros
+    if str_value.isdigit() and len(str_value) < 8:
+        return str_value.zfill(8)
+    
+    return str_value
+
+
+def format_member_number(value):
+    """
+    Format member number to preserve leading zeros
+    Handles formats like: M001, 0001, 001, etc.
+    """
+    if pd.isna(value):
+        return ''
+    
+    # Convert to string and remove decimal point if present
+    str_value = str(value).replace('.0', '').strip()
+    
+    # Remove any spaces
+    str_value = str_value.replace(' ', '')
+    
+    # If it starts with a letter (like M001), keep as is
+    if str_value and not str_value[0].isdigit():
+        return str_value
+    
+    # If it's purely numeric and short, pad with zeros (assuming 4-digit format)
+    if str_value.isdigit() and len(str_value) < 4:
+        return str_value.zfill(4)
+    
+    return str_value
+
 app = Flask(__name__)
 
 # ============= CONFIGURATION =============
@@ -793,7 +838,6 @@ def get_search_logs():
         return jsonify({'error': str(e)}), 500
 
 # ============= PUBLIC ROUTES =============
-
 @app.route('/search', methods=['POST'])
 def search_member():
     data = request.json
@@ -803,7 +847,34 @@ def search_member():
     if not member_number or not id_number:
         return jsonify({'error': 'Both member number and ID number are required'}), 400
     
-    member = Member.query.filter_by(member_number=member_number, id_number=id_number).first()
+    # Format the inputs using helper functions
+    formatted_member_number = format_member_number(member_number)
+    formatted_id_number = format_id_number(id_number)
+    
+    # Create variations for search
+    member_variations = [member_number, formatted_member_number]
+    id_variations = [id_number, formatted_id_number]
+    
+    # Add stripped versions if they start with 0
+    if member_number.startswith('0'):
+        stripped = member_number.lstrip('0')
+        if stripped:
+            member_variations.append(stripped)
+    
+    if id_number.startswith('0'):
+        stripped = id_number.lstrip('0')
+        if stripped:
+            id_variations.append(stripped)
+    
+    # Remove duplicates
+    member_variations = list(set(member_variations))
+    id_variations = list(set(id_variations))
+    
+    # Search using OR logic - find any matching combination
+    member = Member.query.filter(
+        Member.member_number.in_(member_variations),
+        Member.id_number.in_(id_variations)
+    ).first()
     
     # Log the search
     search_log = SearchLog(
